@@ -1,0 +1,1 @@
+{"name":"valentino-assistant","private":true,"type":"module","version":"0.1.0","scripts":{"start":"node --env-file-if-exists=.env server.mjs","test":"node --test"},"engines":{"node":">=24"}}
