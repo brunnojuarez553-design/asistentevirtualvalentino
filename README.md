@@ -61,6 +61,27 @@ El archivo `db/valentino_blueprint_v2.sql` propone tablas normalizadas para nego
 
 **Coexistencia de WhatsApp Business App + Cloud API es un requisito de lanzamiento, no opcional.** El asistente nunca debe registrar ni migrar el número real por el camino convencional de Cloud API hasta comprobar la elegibilidad de Coexistence y completar Embedded Signup autorizado, suscripciones de `smb_message_echoes` y pruebas de toma de control humano. Si Meta no habilita el número, no se considera terminada la integración de WhatsApp del alcance contratado. El número se mantiene intacto hasta validar el onboarding. No usar bibliotecas de WhatsApp Web no oficiales.
 
+
+## Editor de servicios de Valentino (31/10/2026)
+
+La nueva sección **Servicios** del panel reemplaza la edición técnica del catálogo en JSON. Valentino puede:
+
+1. Ver y buscar todos los servicios; crear uno nuevo, editarlo o archivarlo (no se borra el historial).
+2. Editar título, categoría, descripción, inclusiones, compatibilidad de vehículos/motores, garantía y texto para clientes.
+3. Modificar el **precio orientativo en USD**, que permanece interno: no se comunica automáticamente sin una regla exacta de `vm_price_rules` validada.
+4. Adjuntar una imagen con URL HTTPS o **subir JPG/PNG/WebP de hasta 5 MB** a Supabase Storage desde el panel. El bucket `valentino-service-images` es público: usar solamente material comercial autorizado, nunca fotos personales de clientes, facturas o placas.
+5. Activar/desactivar un servicio y aprobar su información para IA. La aprobación exige resolver cualquier revisión técnica/legal señalada. La IA solo obtiene servicios activos y aprobados, **sin tarifas automáticas**.
+
+### Infraestructura y puesta en marcha
+
+- **Proyecto Supabase:** `oficyvzpwpfjnajaqkrg`, región `us-east-1`. `vm_services` (11 servicios de referencia) y bucket `valentino-service-images` provisionados. SQL de respaldo en `db/service_catalog_and_images.sql`.
+- La nueva API `GET/POST /api/services` opera sobre `vm_services` mediante `lib/catalog.mjs` **solo en el backend**. `POST /api/service-image` valida tipo real de archivo y tamaño antes de subirlo. Todas las rutas usan el mecanismo de acceso al panel; no abrirlas sin protección.
+- Para conectar una instancia Node privada a la base nueva: `STORAGE=supabase`, `SUPABASE_URL=https://oficyvzpwpfjnajaqkrg.supabase.co`, `SUPABASE_SERVICE_ROLE_KEY` (secret key privada solo en hosting), `DASHBOARD_TOKEN` fuerte y `NODE_ENV=production`. Nunca poner claves privadas en repositorios ni en el navegador.
+- En `STORAGE=local`, el editor funciona para pruebas y persiste en el archivo local; la subida directa de fotos requiere `STORAGE=supabase`.
+- El servidor actualmente requiere **un proceso Node persistente**; NO sirve desplegar esta rama como sitio HTML estático ni como función serverless Vercel sin adaptar la arquitectura. El panel todavía no está desplegado.
+- **Seguridad pendiente para producción real:** autenticación personal de Valentino mediante Supabase Auth, roles por usuario, auditoría de cambios, control de versiones, backups y despliegue HTTPS. El `DASHBOARD_TOKEN` actual es solo un control temporal de prototipo, no la solución definitiva para un equipo de producción.
+- WhatsApp e Instagram siguen desconectados. La coexistencia del número WhatsApp Business debe verificarse por onboarding oficial Meta antes de cualquier activación.
+
 ## Webhooks y despliegue
 
 `GET/POST /webhooks/meta`: desactivados por defecto, challenge con token y POST con HMAC SHA-256 del cuerpo crudo. Normaliza mensajes de texto Instagram/WhatsApp, eventos de comentarios Instagram con `field:comments` e ignora ecos; guarda eventos idempotentes. Los comentarios siempre se derivan a revisión y nunca se publican. No procesa adjuntos ni estados de entrega aún. Incluso si se habilita la recepción, **no existe código de envío real**. Mantener `META_WEBHOOKS_ENABLED=false` hasta tener API oficial, permisos y aprobación para conectar cuentas. Adaptadores sujetos a validación contra la versión oficial aprobada de Meta.
