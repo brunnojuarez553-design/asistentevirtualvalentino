@@ -1,6 +1,6 @@
 # Valentino Motors — asistente en preparación
 
-Primera versión funcional, sin n8n. **Modo simulación exclusivo: no existe transporte de salida hacia Meta.** No se conectaron cuentas ni números. No hay precios ni servicios oficiales: el relevamiento original era un formulario vacío.
+Primera versión funcional, sin n8n. **Modo simulación exclusivo: no existe transporte de salida hacia Meta.** No se conectaron cuentas ni números. El catálogo incorpora ahora los 10 servicios y precios de referencia que compartió Valentino, pero **ninguno habilita cotizaciones automáticas** hasta ser aprobado y configurado con vehículo, motor, año, vigencia y revisión de cumplimiento legal.
 
 ## Probar ahora
 
@@ -17,7 +17,7 @@ Abrir http://127.0.0.1:3000. El panel permite simular consultas, cambiar entre I
 
 ## Catálogo y cotizaciones
 
-Editar Catálogo y tono en el panel. Saludo/estilo/ejemplos son provisionales hasta recibir mensajes reales anonimizados. Catálogo inicial vacío. Esquema de un servicio de **prueba**, no datos comerciales reales:
+Editar Catálogo y tono en el panel. Saludo/estilo/ejemplos son provisionales hasta recibir mensajes reales anonimizados. El catálogo inicial contiene referencias proporcionadas por Valentino: packs Toyota Dynamic Force (convencional e híbrido), Toyota 2GR-FKS fases 1 y 2, entonaciones Dynamic Force y 1GR-FE, Oil Catch Can, pack Suzuki Swift, y transmisiones Toyota UA80E/K320. Se guardan como `referencePriceUsd` con `approved:false` y `prices:[]`. **No son precios automáticos**. Esquema de un servicio de **prueba**, no una tarifa autorizada:
 
 ```json
 {"id":"ejemplo","name":"Servicio de prueba","approved":false,"description":"Completar con Valentino","prices":[{"make":"Toyota","model":"Hilux","year":"2020","engine":"2.8","amount":100,"currency":"USD","validUntil":"2026-12-31","conditions":"Solo ejemplo; no utilizar comercialmente","approved":false}]}
@@ -35,9 +35,29 @@ Crear un proyecto nuevo y ejecutar `db/schema.sql` una vez desde SQL Editor; lue
 
 Esta primera base almacena un workspace JSON con conversaciones, mensajes, catálogo, alertas, eventos deduplicados y auditoría. **Requiere una sola instancia Node persistente**, que serializa escrituras; no desplegar con varias réplicas ni como funciones Vercel. Antes de escalar: normalizar tablas, paginar, agregar transacciones y cola durable, deduplicación por índice único y control de versión entre instancias. La base SQL no pudo ejecutarse sin proyecto/credenciales; no se afirma que esté provisionada o verificada en remoto.
 
+
+## Avance multicanal (31/10/2026)
+
+- Panel visual actualizado a la identidad de [valentinomotors.com](https://www.valentinomotors.com/): rojo `#E8000F`, negro y familias **Bebas Neue / Outfit**.
+- El simulador permite elegir **WhatsApp, Instagram DM o comentario público**. Los casos de prueba quedan separados por canal en la bandeja. No son mensajes reales.
+- Solicitudes de turno, reserva, cita, agenda o disponibilidad pasan a **revisión humana** con borrador para solicitar datos; **solo Valentino confirma**. No hay integración de calendario.
+- Los comentarios de Instagram pasan siempre a revisión humana; no se publica ni se envía respuesta privada desde el sistema.
+- La primera respuesta saluda una vez; las siguientes no repiten el saludo automático.
+- Todos los cambios se desarrollan en `feat/asistente-valentino`, conservando el formulario inicial en `index.html`. La PR #1 es de revisión, no está desplegada.
+- No registrar en Git datos bancarios, tokens Meta, credenciales ni datos personales de clientes. Para imágenes de conversaciones, anonimizar números e identificadores.
+
+### Próxima integración (aún pendiente)
+
+1. Proyecto Supabase con almacenamiento transaccional por conversaciones/usuarios, acceso por rol y auditoría.
+2. Credenciales oficiales Meta, permisos validados y coexistencia del número de WhatsApp Business confirmada en la cuenta de Valentino.
+3. Implementar envío real por canal con control de ventana de atención, reintentos, límites, consentimiento y mecanismo de **pausa inmediata** cuando Valentino intervenga.
+4. Aprobar política de respuestas comerciales, precios vigentes, garantías y excepciones; probar en modo borrador antes del envío automático.
+5. Desplegar backend persistente con TLS; esta primera versión Node **no es apta para ejecutar como funciones serverless de Vercel** y no se debe exponer públicamente sin autenticación y despliegue apropiados.
+
+
 ## Webhooks y despliegue
 
-`GET/POST /webhooks/meta`: desactivados por defecto, challenge con token y POST con HMAC SHA-256 del cuerpo crudo. Normaliza mensajes de texto Instagram/WhatsApp e ignora ecos; guarda eventos idempotentes. No procesa comentarios, adjuntos ni estados de entrega aún. Incluso si se habilita la recepción, **no existe código de envío real**. Mantener `META_WEBHOOKS_ENABLED=false` hasta tener API oficial, permisos y aprobación para conectar cuentas. Adaptadores sujetos a validación contra la versión oficial aprobada de Meta.
+`GET/POST /webhooks/meta`: desactivados por defecto, challenge con token y POST con HMAC SHA-256 del cuerpo crudo. Normaliza mensajes de texto Instagram/WhatsApp, eventos de comentarios Instagram con `field:comments` e ignora ecos; guarda eventos idempotentes. Los comentarios siempre se derivan a revisión y nunca se publican. No procesa adjuntos ni estados de entrega aún. Incluso si se habilita la recepción, **no existe código de envío real**. Mantener `META_WEBHOOKS_ENABLED=false` hasta tener API oficial, permisos y aprobación para conectar cuentas. Adaptadores sujetos a validación contra la versión oficial aprobada de Meta.
 
 El servidor escucha en loopback; para hosting, usar proxy inverso HTTPS y una sola instancia persistente. `NODE_ENV=production` exige Supabase y token de panel de al menos 32 caracteres. El sitio Vercel existente continúa siendo el relevamiento estático; esta rama no cambia su producción. El dashboard requiere el servidor Node. Para producción también faltan acceso por usuario/SSO, rotación de claves, rate limit en proxy, backups, retención/borrado de datos y monitoreo. No exponer un servidor de pruebas públicamente.
 
@@ -55,7 +75,7 @@ El servidor escucha en loopback; para hosting, usar proxy inverso HTTPS y una so
 
 `npm test`: cotización exacta, datos faltantes, vencimiento, duplicidad de precios, derivaciones, pausa humana, borradores de proveedor, firma alterada, ecos, autenticación API, webhook desactivado, persistencia y deduplicación. Las pruebas usan almacenamiento aislado en memoria. Las verificaciones de Supabase y cuentas oficiales quedan pendientes de credenciales.
 
-Fuentes de seguridad: [Supabase API](https://supabase.com/docs/guides/api/securing-your-api), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security). El modelo de permisos conserva claves privilegiadas fuera del cliente.
+Fuentes de seguridad: [Supabase API](https://supabase.com/docs/guides/api/securing-your-api), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security). El modelo de permisos conserva claves privilegiadas fuera del cliente. Un flujo de GitHub Actions valida sintaxis y pruebas en cada commit de la rama y la PR.
 
 ## Adaptador IA implementado
 
