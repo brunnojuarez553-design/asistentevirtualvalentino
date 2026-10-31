@@ -116,6 +116,16 @@
       "referenceOnly": true,
       "approved": false,
       "prices": []
+    },
+    {
+      "id": "diagnostico-54-puntos",
+      "name": "Diagnóstico integral de 54 puntos",
+      "description": "Inspección de 54 puntos; herramientas de diagnóstico según necesidad. Requiere confirmar alcance y vigencia antes de cotizar.",
+      "referencePriceUsd": 80,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
     }
   ],
   "notice": "Precios y servicios recibidos del cliente. Valores de REFERENCIA pendientes de confirmación de vigencia, aplicación y permisos. Ninguno está autorizado para cotización automática. No compartir datos bancarios ni confirmar turnos. Revisar legalidad de modificaciones de emisiones."
