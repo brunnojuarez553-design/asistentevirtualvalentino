@@ -40,3 +40,36 @@ test('API protege acceso, persiste estados, evita duplicados y no envía a Meta'
  assert.equal((await call('/api/conversation',{id:'missing',action:'state',state:'ia'})).status,404);
  assert.equal((await call('/')).status,200);
 });
+
+
+test('turnos tienen prioridad sobre cotizaciones y no se confirman automáticamente',async()=>{
+ const r=await respond({text:'Cuánto cuesta y puedo agendar cita?',config,serviceId:'demo',vehicle,conversation:{state:'ia',channel:'whatsapp',messages:[]}});
+ assert.equal(r.state,'revision');assert.equal(r.reply,null);assert.match(r.reason,/Valentino/);
+ assert.match(r.draft,/confirmará personalmente/);
+});
+test('comentarios de Instagram se derivan a moderación y no generan respuestas públicas',async()=>{
+ const r=await respond({text:'Precio para mi Toyota',config,serviceId:'demo',vehicle,conversation:{state:'ia',channel:'instagram_comentario',messages:[]}});
+ assert.equal(r.state,'revision');assert.equal(r.reply,null);assert.match(r.reason,/Comentario de Instagram/);
+ const e=metaEvents({entry:[{changes:[{field:'comments',value:{id:'comment42',text:'Cuánto cuesta?',from:{id:'cliente42'}}}]}]});
+ assert.equal(e.length,1);assert.equal(e[0].channel,'instagram_comentario');assert.equal(e[0].id,'ig-comment:comment42');
+});
+test('un saludo ya enviado no vuelve a repetirse en consultas normales',async()=>{
+ const c={state:'ia',channel:'whatsapp',messages:[{role:'asistente',text:'Hola de Valentino'}]};
+ const r=await respond({text:'tengo una duda',config,conversation:c});
+ assert.equal(r.state,'ia');assert.ok(!r.reply.startsWith('Hola de Valentino'));
+});
+test('se puede simular canal WhatsApp e Instagram sin envíos y sin alertas repetidas',async t=>{
+ let state={config:null,conversations:[],alerts:[],audit:[],events:[]};
+ const store={load:async()=>structuredClone(state),save:async d=>{state=structuredClone(d);}};
+ const app=await createApp({DASHBOARD_TOKEN:'test-secret'},store);
+ await new Promise(r=>app.listen(0,'127.0.0.1',r));
+ t.after(()=>new Promise(r=>app.close(r)));
+ const root='http://127.0.0.1:'+app.address().port;
+ const post=async body=>{const r=await fetch(root+'/api/simulate',{method:'POST',headers:{Authorization:'Bearer test-secret','Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
+ const c=await post({id:'test-comment-1',text:'Precio?',channel:'instagram_comentario',contact:'usuario de prueba'});
+ assert.equal(c.channel,'instagram_comentario');assert.equal(c.state,'revision');assert.equal(c.messages.length,1);
+ assert.equal(state.alerts.length,1);
+ const next=await post({id:'test-comment-2',text:'Hola?',channel:'instagram_comentario',conversationId:c.id});
+ assert.equal(next.messages.length,2);assert.equal(state.alerts.length,1);
+ assert.equal(state.conversations.length,1);
+});
