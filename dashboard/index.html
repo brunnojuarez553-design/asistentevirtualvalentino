@@ -19,6 +19,7 @@
         <label>Qué incluye<textarea id="svcInclusions" maxlength="5000" placeholder="Detallá trabajos, materiales y comprobaciones"></textarea></label>
         <label>Vehículos compatibles<textarea id="svcCompatibility" maxlength="2000" placeholder="Marca, modelo, motorización, restricciones y excepciones"></textarea></label>
         <div class="field-row"><label>Precio orientativo (USD)<input id="svcPrice" type="number" min="0.01" max="99999999" step="0.01" inputmode="decimal" placeholder="Opcional"></label><label>Imagen del servicio (URL HTTPS)<input id="svcImage" type="url" maxlength="2048" placeholder="https://res.cloudinary.com/..."></label></div>
+        <div class="upload-row"><label>Subir foto del servicio (JPG, PNG o WebP; hasta 5 MB)<input id="svcFile" type="file" accept="image/jpeg,image/png,image/webp"></label><button type="button" id="svcUpload">Subir imagen</button><img id="svcPreview" alt="Vista previa del servicio" hidden></div>
         <label>Texto comercial aprobado para mostrar al cliente<textarea id="svcPublicCopy" maxlength="3000" placeholder="Cómo querés que la IA describa el servicio"></textarea></label>
         <label>Condiciones de garantía<textarea id="svcWarranty" maxlength="3000" placeholder="Solo garantías verificadas con Valentino"></textarea></label>
         <div class="catalog-permissions"><label class="toggle"><input id="svcActive" type="checkbox" checked><span><strong>Servicio activo</strong><small>Aparece en la lista de servicios disponibles para el equipo.</small></span></label>
