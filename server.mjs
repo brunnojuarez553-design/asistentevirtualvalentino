@@ -22,9 +22,9 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
     c.messages.push({id,role:'cliente',text,at:new Date().toISOString()});
     const result=await respond({text,conversation:c,config:d.config,vehicle,serviceId,provider});
-    c.state=result.state;c.draft=result.draft||null;c.reason=result.reason||null;
+    c.state=result.state;c.draft=result.draft||c.draft||null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
-    if(c.state!=='ia')d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
+    if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
     d.events.push(id);audit(d,'mensaje_recibido',c.id);return c;
   }
   const server=http.createServer(async(req,res)=>{
@@ -59,7 +59,8 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       if(url.pathname==='/webhooks/meta') {if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});const events=metaEvents(body);await mutate(async d=>{for(const e of events)if(typeof e.text==='string'&&e.text.length<=4000)await incoming(d,e);});return send(200,{received:true,outbound:false});}
       if(url.pathname==='/api/simulate'){
         if(typeof body.text!=='string'||!body.text.trim()||body.text.length>4000||body.contact?.length>120)return send(400,{error:'Ingresá un mensaje de hasta 4000 caracteres'});
-        return send(200,await mutate(d=>incoming(d,{...body,channel:'simulador'})));
+        const channel=['simulador','whatsapp','instagram','instagram_comentario'].includes(body.channel)?body.channel:'simulador';
+        return send(200,await mutate(d=>incoming(d,{...body,channel})));
       }
       if(url.pathname==='/api/config'){
         if(!body.tone || typeof body.tone.greeting!=='string'||!body.tone.greeting.trim()||!Array.isArray(body.services)||body.services.some(s=>!s.id||!s.name||!Array.isArray(s.prices)))return send(400,{error:'Configuración inválida: cada servicio requiere id, name y prices'});
