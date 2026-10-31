@@ -80,6 +80,16 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         return send(200,{...data,config:await engineConfig({...data,config:data.config||defaults}),mode:'simulation',outbound:false});
       }
       if(req.method!=='POST')return send(405,{error:'Método no permitido'});
+      if(url.pathname==='/api/service-image') {
+        if(!catalog)return send(503,{error:'La subida de fotos requiere configurar Supabase en el servidor'});
+        const chunks=[];let size=0;
+        for await(const chunk of req) {
+          size+=chunk.length;if(size>5242880)return send(413,{error:'La imagen supera 5 MB'});
+          chunks.push(chunk);
+        }
+        const imageUrl=await catalog.uploadImage(Buffer.concat(chunks),req.headers['content-type']);
+        return send(200,{image_url:imageUrl});
+      }
       if(url.pathname==='/webhooks/meta'&&env.META_WEBHOOKS_ENABLED!=='true')return send(503,{error:'Webhooks desactivados'});
       let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return send(413,{error:'Mensaje demasiado grande'});}
       if(url.pathname==='/webhooks/meta'&&!signature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return send(403,{error:'Firma inválida'});
