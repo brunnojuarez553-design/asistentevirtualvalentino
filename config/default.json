@@ -1,5 +1,122 @@
 {
-  "tone": {"name":"Valentino Motors","greeting":"¡Hola! Gracias por escribir a Valentino Motors.","style":"Cercano, claro y profesional. Español. Sin promesas ni descuentos inventados.","examples":[],"approved":false},
-  "services": [],
-  "notice":"Catálogo y tono pendientes del relevamiento. No hay precios oficiales cargados."
+  "tone": {
+    "name": "Valentino Motors LG",
+    "greeting": "Saludos, con gusto le ayudamos.",
+    "style": "Español venezolano, atención cálida y respetuosa. Expresiones naturales: «Saludos», «Indíquenos», «Con gusto le ayudamos». Respuestas breves para saludos; información técnica detallada solo cuando la soliciten. No fingir ser Valentino personalmente; aclarar cuando la atención es automática si corresponde.",
+    "examples": [
+      "Saludos, buen día. ¿En qué podemos ayudarle?",
+      "Con gusto. ¿Me confirma la marca, modelo, año y motorización del vehículo?",
+      "Para coordinar su visita, indíquenos el día de preferencia. Valentino le confirmará personalmente la disponibilidad."
+    ],
+    "approved": true
+  },
+  "business": {
+    "location": "Calle 5, Parcela 314, Urb. Balneario, Catia La Mar, Estado La Guaira",
+    "hours": "Lunes a viernes 7:30 a 12:00 y 13:30 a 17:00",
+    "booking": "La IA solo recopila datos; Valentino confirma siempre manualmente. No existe calendario conectado.",
+    "humanHandoff": "Si solicita turno, falla compleja, reclamo, diagnóstico o atención humana, pausar la IA y generar alerta."
+  },
+  "services": [
+    {
+      "id": "toyota-dynamic-force",
+      "name": "Blindaje Toyota Dynamic Force (no híbrido)",
+      "description": "EGR físico/software, aditivo y mantenimiento. Verificar modelo, motor, normativa y condiciones de garantía.",
+      "referencePriceUsd": 665,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "toyota-dynamic-force-hybrid",
+      "name": "Blindaje Toyota Dynamic Force Hybrid",
+      "description": "Incluye intervención de sistemas de alto voltaje. Siempre requiere confirmación técnica y legal humana.",
+      "referencePriceUsd": 865,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "toyota-2gr-fks-fase1",
+      "name": "Toyota Tacoma 2GR-FKS: restauración (fase 1)",
+      "description": "Limpieza de inyección y admisión, catch can, puesta a punto. Confirmar compatibilidad.",
+      "referencePriceUsd": 750,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "toyota-2gr-fks-fase2",
+      "name": "Toyota Tacoma 2GR-FKS: reprogramación (fase 2)",
+      "description": "Reprogramación de protección; siempre revisión por especialista.",
+      "referencePriceUsd": 550,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "entonacion-dynamic-force",
+      "name": "Entonación integral Toyota Dynamic Force",
+      "description": "Limpieza de admisión e inyectores. Garantía sujeta a condiciones del taller.",
+      "referencePriceUsd": 580,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "entonacion-1gr-fe",
+      "name": "Entonación integral Toyota 1GR-FE",
+      "description": "Limpieza, walnut blasting, bujías, catch can e inyección; verificar aplicación.",
+      "referencePriceUsd": 690,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "oil-catch-can",
+      "name": "Instalación Oil Catch Can",
+      "description": "Sistema preventivo; requiere evaluar el estado previo del motor.",
+      "referencePriceUsd": 190,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "suzuki-swift-12",
+      "name": "Pack Suzuki Swift 1.2 Z12E/K12D",
+      "description": "EGR, aditivo y mantenimiento; validar año, motor y cumplimiento legal.",
+      "referencePriceUsd": 765,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "toyota-ua80e",
+      "name": "Mantenimiento preventivo Toyota UA80E",
+      "description": "Cambio parcial de ATF, nivelación y reseteo. Validar tipo de transmisión.",
+      "referencePriceUsd": 310,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    },
+    {
+      "id": "toyota-k320",
+      "name": "Mantenimiento preventivo Toyota K320",
+      "description": "Cambio de fluido CVT-FE y calibración. Validar transmisión exacta.",
+      "referencePriceUsd": 340,
+      "referenceCurrency": "USD",
+      "referenceOnly": true,
+      "approved": false,
+      "prices": []
+    }
+  ],
+  "notice": "Precios y servicios recibidos del cliente. Valores de REFERENCIA pendientes de confirmación de vigencia, aplicación y permisos. Ninguno está autorizado para cotización automática. No compartir datos bancarios ni confirmar turnos. Revisar legalidad de modificaciones de emisiones."
 }
