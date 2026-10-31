@@ -79,6 +79,6 @@ Fuentes de seguridad: [Supabase API](https://supabase.com/docs/guides/api/securi
 
 ## Adaptador IA implementado
 
-Actualización: `lib/provider.mjs` implementa OpenAI Responses. Para activarlo configurar `AI_ENABLED=true`, `OPENAI_API_KEY` y `OPENAI_MODEL`. Sin esas variables sigue el simulador de reglas. Usa `store:false`, timeout y límite de salida; todo texto generado queda en revisión. El adaptador se verificó con respuestas simuladas, sin llamar una API real ni consumir saldo. Quedan pendientes la clave/modelo, presupuesto y evaluación de tono. Referencia: https://developers.openai.com/api/docs/guides/migrate-to-responses
+`lib/provider.mjs` admite **Groq Chat Completions** (recomendado para este proyecto) y OpenAI Responses de forma opcional. Para borradores con Groq configurar `AI_ENABLED=true`, `AI_PROVIDER=groq`, `GROQ_API_KEY` y `GROQ_MODEL` con un identificador compatible activo. Alternativa: `AI_PROVIDER=openai` con `OPENAI_API_KEY` y `OPENAI_MODEL`. Mantener `AI_ENABLED=false` hasta configurar entorno protegido. Los borradores generados por modelos **siempre quedan en revisión humana** y nunca se envían a Meta. No se probó ningún proveedor con claves reales. Groq: https://console.groq.com/docs/api-reference ; OpenAI: https://developers.openai.com/api/docs/guides/migrate-to-responses
 
 El panel incluye campos de marca/modelo/año/motor y selector de servicio aprobado para probar cotizaciones exactas. Estos datos no se deducen del chat libre.
