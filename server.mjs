@@ -6,22 +6,44 @@ import {respond} from './lib/engine.mjs';
 import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
 import {createProvider} from './lib/provider.mjs';
+import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 
 export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{})) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
   if(env.NODE_ENV==='production' && (!env.DASHBOARD_TOKEN || env.DASHBOARD_TOKEN.length<32 || env.STORAGE!=='supabase'))throw Error('Production requires Supabase and a dashboard token of at least 32 characters');
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
+  const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
   let queue=Promise.resolve();
   const mutate=fn=>{const next=queue.then(async()=>{const data=await store.load();data.config ||= structuredClone(defaults);const result=await fn(data);await store.save(data);return result;});queue=next.catch(()=>{});return next;};
   const audit=(d,action,id)=>d.audit.push({id:randomUUID(),at:new Date().toISOString(),action,conversationId:id});
+  // Un único catálogo de origen: tablas vm_services en Supabase o workspace local en pruebas.
+  const serviceRows=async d=>catalog?await catalog.list():(d.config?.services||defaults.services).map(fromEngineService);
+  const engineConfig=async d=>({...d.config,services:(await serviceRows(d)).map(toEngineService)});
+  const localServiceSave=async (d,body)=>{
+    d.config ||= structuredClone(defaults);
+    d.config.services ||= [];
+    const list=d.config.services;
+    const previous=body.id?list.find(x=>x.id===body.id):null;
+    if(body.id&&!previous)throw Object.assign(Error('No se encontró el servicio'),{status:404});
+    const parsed=validateService(body,previous?{code:previous.id}:{});
+    if(!previous&&list.some(x=>x.id===parsed.code))throw Object.assign(Error('Código de servicio duplicado'),{status:409});
+    const record=fromEngineService({...toEngineService({...parsed,id:parsed.code}),...parsed,id:parsed.code});
+    // Conservamos price rules sólo si existen y el negocio no está modificando precios especiales.
+    const next={...parsed,id:parsed.code,referencePriceUsd:parsed.reference_price_usd,
+      referenceCurrency:'USD',referenceOnly:true,prices:previous?.prices||[],approved:parsed.approved,
+      publicCopy:parsed.public_copy,warranty:parsed.warranty_terms,imageUrl:parsed.image_url};
+    if(previous)list.splice(list.indexOf(previous),1,next);else list.push(next);
+    audit(d,previous?'servicio_editado':'servicio_creado');
+    return {...record,...parsed,id:parsed.code};
+  };
   async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId}) {
     if(d.events.includes(id))return {duplicate:true};
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
     c.messages.push({id,role:'cliente',text,at:new Date().toISOString()});
-    const result=await respond({text,conversation:c,config:d.config,vehicle,serviceId,provider});
+    const result=await respond({text,conversation:c,config:await engineConfig(d),vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft||c.draft||null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
@@ -30,7 +52,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
-    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'");
     const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
     try {
       if(url.pathname==='/health')return send(200,{ok:true,mode:'simulation',outbound:false});
@@ -50,21 +72,46 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(env.DASHBOARD_TOKEN ? !same(req.headers.authorization,`Bearer ${env.DASHBOARD_TOKEN}`) : !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress))return send(401,{error:'Acceso no autorizado'});
         if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}` && req.headers.origin!==`https://${req.headers.host}`)return send(403,{error:'Origen inválido'});
       }
-      if(url.pathname==='/api/workspace'&&req.method==='GET') {await queue;const data=await store.load();return send(200,{...data,config:data.config||defaults,mode:'simulation',outbound:false});}
+      if(url.pathname==='/api/services' && req.method==='GET'){
+        await queue;const d=await store.load();return send(200,{services:await serviceRows(d)});
+      }
+      if(url.pathname==='/api/workspace'&&req.method==='GET') {
+        await queue;const data=await store.load();
+        return send(200,{...data,config:await engineConfig({...data,config:data.config||defaults}),mode:'simulation',outbound:false});
+      }
       if(req.method!=='POST')return send(405,{error:'Método no permitido'});
       if(url.pathname==='/webhooks/meta'&&env.META_WEBHOOKS_ENABLED!=='true')return send(503,{error:'Webhooks desactivados'});
       let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return send(413,{error:'Mensaje demasiado grande'});}
       if(url.pathname==='/webhooks/meta'&&!signature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return send(403,{error:'Firma inválida'});
       let body;try{body=JSON.parse(raw);}catch{return send(400,{error:'JSON inválido'});}
       if(url.pathname==='/webhooks/meta') {if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});const events=metaEvents(body);await mutate(async d=>{for(const e of events)if(typeof e.text==='string'&&e.text.length<=4000)await incoming(d,e);});return send(200,{received:true,outbound:false});}
+      if(url.pathname==='/api/services'){
+        if(body.action==='archive'){
+          if(catalog)return send(200,{service:await catalog.archive(body)});
+          return send(200,{service:await mutate(d=>{
+            const found=(d.config?.services||[]).find(s=>s.id===body.id);
+            if(!found)throw Object.assign(Error('Servicio inexistente'),{status:404});
+            found.active=false;found.approved=false;audit(d,'servicio_archivado');return fromEngineService(found);
+          })});
+        }
+        const service=catalog?await catalog.save(body):await mutate(d=>localServiceSave(d,body));
+        return send(200,{service});
+      }
       if(url.pathname==='/api/simulate'){
         if(typeof body.text!=='string'||!body.text.trim()||body.text.length>4000||body.contact?.length>120)return send(400,{error:'Ingresá un mensaje de hasta 4000 caracteres'});
         const channel=['simulador','whatsapp','instagram','instagram_comentario'].includes(body.channel)?body.channel:'simulador';
         return send(200,await mutate(d=>incoming(d,{...body,channel})));
       }
       if(url.pathname==='/api/config'){
-        if(!body.tone || typeof body.tone.greeting!=='string'||!body.tone.greeting.trim()||!Array.isArray(body.services)||body.services.some(s=>!s.id||!s.name||!Array.isArray(s.prices)))return send(400,{error:'Configuración inválida: cada servicio requiere id, name y prices'});
-        await mutate(d=>{d.config=body;audit(d,'configuracion_actualizada');});return send(200,{ok:true});
+        if(!body.tone || typeof body.tone.greeting!=='string'||!body.tone.greeting.trim()||
+           typeof body.tone.style!=='string')return send(400,{error:'El tono de la IA es inválido'});
+        await mutate(d=>{
+          d.config ||= structuredClone(defaults);
+          d.config={...d.config,tone:body.tone,business:body.business||d.config.business,
+            notice:typeof body.notice==='string'?body.notice:d.config.notice};
+          audit(d,'tono_actualizado');
+        });
+        return send(200,{ok:true});
       }
       if(url.pathname==='/api/conversation'){
         return send(200,await mutate(d=>{
