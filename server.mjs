@@ -52,7 +52,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
-    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'");
     const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
     try {
       if(url.pathname==='/health')return send(200,{ok:true,mode:'simulation',outbound:false});
