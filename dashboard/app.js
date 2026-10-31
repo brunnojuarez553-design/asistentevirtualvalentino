@@ -73,6 +73,11 @@ function openService(s=null){
   $('#svcLegal').checked=s?.needs_legal_review===true;
   $('#svcApproved').checked=s?.approved===true;
   $('#svcArchive').hidden=!s||!s.active;
+  $('#svcFile').value='';
+  const preview=$('#svcPreview');
+  const image=s?.image_url||'';
+  preview.hidden=!/^https:\/\//i.test(image);
+  if(!preview.hidden)preview.src=image;else preview.removeAttribute('src');
   $('#serviceFeedback').textContent='';
   if(s)$('#catalog').scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -95,6 +100,27 @@ $('#serviceEditor').onsubmit=async e=>{
     $('#serviceFeedback').textContent='Servicio guardado correctamente en '+(data.mode==='simulation'?'el catálogo configurado.':'Supabase.');
   }catch(error){$('#serviceFeedback').textContent=error.message;}
   finally{button.disabled=false;}
+};
+$('#svcUpload').onclick=async()=>{
+  const file=$('#svcFile').files?.[0];
+  if(!file){$('#serviceFeedback').textContent='Elegí una imagen para subir.';return;}
+  if(file.size>5242880){$('#serviceFeedback').textContent='La imagen debe pesar menos de 5 MB.';return;}
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)){
+    $('#serviceFeedback').textContent='Solo JPG, PNG o WebP.';return;
+  }
+  $('#svcUpload').disabled=true;$('#serviceFeedback').textContent='Subiendo imagen...';
+  try{
+    const response=await fetch('/api/service-image',{
+      method:'POST',headers:{'Content-Type':file.type,...(token?{Authorization:'Bearer '+token}:{})},
+      body:file
+    });
+    const json=await response.json();
+    if(!response.ok)throw Error(json.error||'No se pudo subir la imagen.');
+    $('#svcImage').value=json.image_url;
+    $('#svcPreview').src=json.image_url;$('#svcPreview').hidden=false;
+    $('#serviceFeedback').textContent='Imagen subida. Guardá el servicio para asociarla a su ficha.';
+  }catch(error){$('#serviceFeedback').textContent=error.message;}
+  finally{$('#svcUpload').disabled=false;}
 };
 $('#svcArchive').onclick=async()=>{
   if(!editingServiceId)return;
