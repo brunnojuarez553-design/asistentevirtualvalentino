@@ -55,6 +55,12 @@ Esta primera base almacena un workspace JSON con conversaciones, mensajes, catá
 5. Desplegar backend persistente con TLS; esta primera versión Node **no es apta para ejecutar como funciones serverless de Vercel** y no se debe exponer públicamente sin autenticación y despliegue apropiados.
 
 
+## Proyecto Supabase nuevo pendiente de recibir
+
+El archivo `db/valentino_blueprint_v2.sql` propone tablas normalizadas para negocios, personal, canales, clientes, identidades por canal, conversaciones, mensajes, servicios, precios, eventos de webhook, derivaciones a humano, solicitudes de turno, alertas y auditoría. **Es un diseño sin ejecutar**, no una migración aplicada. Protege todas las tablas con RLS y revoca acceso de `anon` y `authenticated` inicialmente. El backend existente todavía usa el modelo de `assistant_workspace`; no cambiar el storage sin implementar y probar un adaptador nuevo.
+
+**Coexistencia de WhatsApp Business App + Cloud API es un requisito de lanzamiento, no opcional.** El asistente nunca debe registrar ni migrar el número real por el camino convencional de Cloud API hasta comprobar la elegibilidad de Coexistence y completar Embedded Signup autorizado, suscripciones de `smb_message_echoes` y pruebas de toma de control humano. Si Meta no habilita el número, no se considera terminada la integración de WhatsApp del alcance contratado. El número se mantiene intacto hasta validar el onboarding. No usar bibliotecas de WhatsApp Web no oficiales.
+
 ## Webhooks y despliegue
 
 `GET/POST /webhooks/meta`: desactivados por defecto, challenge con token y POST con HMAC SHA-256 del cuerpo crudo. Normaliza mensajes de texto Instagram/WhatsApp, eventos de comentarios Instagram con `field:comments` e ignora ecos; guarda eventos idempotentes. Los comentarios siempre se derivan a revisión y nunca se publican. No procesa adjuntos ni estados de entrega aún. Incluso si se habilita la recepción, **no existe código de envío real**. Mantener `META_WEBHOOKS_ENABLED=false` hasta tener API oficial, permisos y aprobación para conectar cuentas. Adaptadores sujetos a validación contra la versión oficial aprobada de Meta.
