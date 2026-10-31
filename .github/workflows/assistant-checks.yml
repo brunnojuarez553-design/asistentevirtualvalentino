@@ -1,0 +1,22 @@
+name: Assistant checks
+on:
+  push:
+    branches:
+      - feat/asistente-valentino
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate JavaScript syntax
+        run: |
+          node --check server.mjs
+          node --check lib/engine.mjs
+          node --check lib/security.mjs
+          node --check dashboard/app.js
+      - name: Run tests
+        run: npm test
