@@ -74,3 +74,17 @@ test('API: crear/editar/archivar desde el panel no habilita atención real',asyn
  assert.equal((await api('health')).status,405);
  assert.equal((await fetch(root+'/health').then(r=>r.json())).outbound,false);
 });
+
+
+test('Fotos: acepta solo JPG/PNG/WebP y no expone credenciales en la URL pública',async()=>{
+ let uploaded;const fetcher=async(url,opt)=>{uploaded={url,opt};return {ok:true,status:200,json:async()=>({Key:'ok'})};};
+ const store=new SupabaseCatalog({url:'https://ejemplo.supabase.co',key:'super-secret',fetcher});
+ const jpg=Buffer.from([0xff,0xd8,0xff,0xe0,0x00,0x10]);
+ const uri=await store.uploadImage(jpg,'image/jpeg');
+ assert.match(uri,/storage\/v1\/object\/public\/valentino-service-images\/[0-9a-f-]+\.jpg$/);
+ assert.equal(uploaded.opt.headers.Authorization,'Bearer super-secret');
+ assert.ok(!uri.includes('super-secret'));
+ await assert.rejects(()=>store.uploadImage(jpg,'image/png'),/JPG, PNG o WebP/);
+ await assert.rejects(()=>store.uploadImage(Buffer.from('<svg onload=alert(1)>'),'image/svg+xml'),/JPG, PNG o WebP/);
+ await assert.rejects(()=>store.uploadImage(Buffer.alloc(5242881),'image/jpeg'),/menos de 5 MB/);
+});
