@@ -82,6 +82,20 @@ La nueva sección **Servicios** del panel reemplaza la edición técnica del cat
 - **Seguridad pendiente para producción real:** autenticación personal de Valentino mediante Supabase Auth, roles por usuario, auditoría de cambios, control de versiones, backups y despliegue HTTPS. El `DASHBOARD_TOKEN` actual es solo un control temporal de prototipo, no la solución definitiva para un equipo de producción.
 - WhatsApp e Instagram siguen desconectados. La coexistencia del número WhatsApp Business debe verificarse por onboarding oficial Meta antes de cualquier activación.
 
+
+## Acceso privado del propietario (31/10/2026)
+
+Se verificó en Supabase que la cuenta del propietario está creada, con correo confirmado y rol **owner** activo en `public.vm_staff` para Valentino Motors LG. **No se añadió ni guardó ninguna contraseña en GitHub**.
+
+- `lib/panel-auth.mjs` comprueba la sesión con Supabase Auth y luego los permisos de `vm_staff` mediante la clave privada que **permanece en el servidor**.
+- En el modo `AUTH_MODE=supabase`, la pantalla de acceso solicita correo y contraseña, envía credenciales a `POST /auth/login`, recibe una sesión y la conserva **solo en memoria del navegador**. Volver a cargar la página requiere iniciar sesión otra vez.
+- `GET /auth/mode` anuncia el modo de login, y `/api/*` valida la cuenta y rol en cada solicitud. Solo `owner`/`admin` pueden editar catálogo, subir imágenes o configurar la IA.
+- Protección básica contra intentos repetidos de login y controles de origen. La autorización no se basa en metadatos editables del usuario.
+- Configuración de hosting: `NODE_ENV=production`, `STORAGE=supabase`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SERVICE_ROLE_KEY`. Nunca exponer esta última en frontend ni en repositorio.
+- `AUTH_MODE=token` sigue disponible únicamente para simulación/desarrollo local. No puede ejecutarse como modo de producción.
+- La cuenta ya está en Supabase, pero **no se ha probado un inicio de sesión real con la contraseña ni se ha publicado una URL**. Corresponde preparar hosting HTTPS para el proceso Node, configurar secretos, probar sesión con el dueño y solicitar que cambie la clave inicial compartida anteriormente.
+- La coexistencia oficial WhatsApp Business + Cloud API sigue como condición de lanzamiento; Meta continúa desconectado.
+
 ## Webhooks y despliegue
 
 `GET/POST /webhooks/meta`: desactivados por defecto, challenge con token y POST con HMAC SHA-256 del cuerpo crudo. Normaliza mensajes de texto Instagram/WhatsApp, eventos de comentarios Instagram con `field:comments` e ignora ecos; guarda eventos idempotentes. Los comentarios siempre se derivan a revisión y nunca se publican. No procesa adjuntos ni estados de entrega aún. Incluso si se habilita la recepción, **no existe código de envío real**. Mantener `META_WEBHOOKS_ENABLED=false` hasta tener API oficial, permisos y aprobación para conectar cuentas. Adaptadores sujetos a validación contra la versión oficial aprobada de Meta.
