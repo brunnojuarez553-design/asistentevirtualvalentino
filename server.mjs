@@ -104,7 +104,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
           if(!authorization.startsWith('Bearer '))return send(401,{error:'Iniciá sesión para continuar'});
           req.panelUser=await panelAuth.authenticate(authorization.slice(7));
           if(req.method!=='GET' &&
-             ['/api/services','/api/service-image','/api/config'].includes(url.pathname) &&
+             ['/api/services','/api/service-image','/api/config','/api/ai/check'].includes(url.pathname) &&
              !['owner','admin'].includes(req.panelUser.role))
             return send(403,{error:'No tenés permisos para modificar servicios y configuración'});
         }else if(env.DASHBOARD_TOKEN
@@ -116,9 +116,10 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
           return send(403,{error:'Origen inválido'});
       }
       if(url.pathname==='/api/ai/status'&&req.method==='GET'){
-        return send(200,{enabled:!!provider,provider:provider?(env.AI_PROVIDER||'openai'):null,
-          model:provider?(env.AI_PROVIDER==='groq'?env.GROQ_MODEL:env.OPENAI_MODEL):null,
-          outbound:false,mode:'simulation'});
+        return send(200,{enabled:!!provider,provider:provider?.provider||null,
+          model:provider?.model||null,
+          migratedModel:Boolean(provider?.configuredModel&&provider?.configuredModel!==provider?.model),
+          outbound:false,mode:'simulation',connectionVerified:false});
       }
       if(url.pathname==='/api/services' && req.method==='GET'){
         await queue;const d=await store.load();return send(200,{services:await serviceRows(d)});
@@ -151,6 +152,18 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         }
         const service=catalog?await catalog.save(body):await mutate(d=>localServiceSave(d,body));
         return send(200,{service});
+      }
+      if(url.pathname==='/api/ai/check'){
+        if(!provider)return send(503,{ok:false,code:'not_configured',message:'Groq no está configurado en Vercel.'});
+        if(provider.provider!=='groq')return send(400,{ok:false,code:'unsupported',message:'El diagnóstico es exclusivo de Groq.'});
+        try{
+          const check=await provider.check();
+          return send(200,{...check,outbound:false});
+        }catch(error){
+          return send(200,{ok:false,code:error?.code||'provider_unavailable',
+            message:error?.publicMessage||'No pudimos validar la conexión con Groq.',
+            model:provider.model,outbound:false});
+        }
       }
       if(url.pathname==='/api/ai/draft'){
         if(!provider)return send(503,{error:'Groq todavía no está configurado en Vercel. Cargá la API key y activá AI_ENABLED=true.'});
