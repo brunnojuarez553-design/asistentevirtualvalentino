@@ -51,7 +51,11 @@ test('identidad visual global y todas las vistas están conectadas',async()=>{
    assert.match(html,new RegExp('data-view="'+view+'"'),'missing nav '+view);
    assert.match(js,new RegExp("'"+view+"'"),'missing state '+view);
  }
- assert.match(html,/class="vm-mark"/);
+ const officialLogo='https://res.cloudinary.com/dvvuwigmy/image/upload/w_80,h_80,c_fill,f_auto,q_70/v1779059651/IMG_6676_jbholt.jpg';
+ assert.equal(html.split(officialLogo).length-1,4,'logo oficial en login, sidebar, móvil y favicon');
+ assert.match(html,/Soluciones Tecnológicas Automotrices/);
+ assert.doesNotMatch(html,/class="vm-mark"/);
+ assert.doesNotMatch(html,/valentino-mark\.svg/);
  assert.match(html,/visual-system.css/);
  assert.match(css,/--red:#e8000f/);
  assert.match(css,/prefers-reduced-motion/);
@@ -71,4 +75,13 @@ test('aplicación entrega CSS premium y redirige relevamiento al onboarding',asy
  const redirect=await fetch(base+'/relevamiento',{redirect:'manual'});
  assert.equal(redirect.status,302);
  assert.equal(redirect.headers.get('location'),'/'+'#onboarding');
+});
+
+test('asset oficial del sitio en tarjetas de catálogo y CSS de logo circular',async()=>{
+ const app=await readFile(new URL('../dashboard/app.js',import.meta.url),'utf8');
+ const css=await readFile(new URL('../dashboard/visual-system.css',import.meta.url),'utf8');
+ assert.match(app,/IMG_6676_jbholt\.jpg/);
+ assert.match(css,/official-brand-logo\{/);
+ assert.match(css,/border-radius:50%/);
+ assert.doesNotMatch(css,/\.vm-mark/);
 });
