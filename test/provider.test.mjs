@@ -16,7 +16,7 @@ test('Groq prepara borrador por API oficial sin publicar ni inventar citas',asyn
  assert.match(message,/Saludos/);
  assert.equal(request.url,'https://api.groq.com/openai/v1/chat/completions');
  const body=JSON.parse(request.body);assert.equal(body.model,'modelo-configurado');
- assert.ok(body.messages[0].content.includes('Valentino confirma manualmente'));
+ assert.ok(body.messages[0].content.includes('Valentino confirma personalmente el turno'));
  assert.ok(!request.body.includes('secret-test'));
 });
 test('Groq requiere clave y modelo explícitos al activarse',()=>{
@@ -45,10 +45,10 @@ test('Groq recibe el estilo guardado, el historial y contexto comercial sin reve
  assert.equal(body.messages.at(-2).role,'assistant');
  assert.match(body.messages[0].content,/Trato de tú y te/);
  assert.match(body.messages[0].content,/Catia La Mar/);
- assert.match(body.messages[0].content,/NOMBRES INTERNOS PENDIENTES/);
+ assert.match(body.messages[0].content,/NOMBRES DE SERVICIOS PENDIENTES/);
  assert.doesNotMatch(body.messages[0].content,/665/);
  assert.doesNotMatch(request.body,/private-key-test/);
- assert.match(body.messages[0].content,/sin repetir saludo/);
+ assert.match(body.messages[0].content,/No vuelva a saludar/);
 });
 
 test('la IA recibe solo copy comercial cuando revisión técnica/legal continúa pendiente',async()=>{
@@ -62,7 +62,7 @@ test('la IA recibe solo copy comercial cuando revisión técnica/legal continúa
  assert.match(prompt,/Te orientamos para confirmar la motorización/);
  assert.doesNotMatch(prompt,/Procedimiento sin validación|665/);
  assert.match(prompt,/pendiente: no confirmar compatibilidad/);
- assert.match(prompt,/NO uses voseo/);
+ assert.match(prompt,/ni voseo argentino/);
 });
 
 test('modelo Llama retirado se migra automáticamente a GPT-OSS 120B con razonamiento corto',async()=>{
@@ -98,4 +98,23 @@ test('la API Groq no revela la clave y no fuerza pruebas al inicializar',()=>{
   GROQ_MODEL:'openai/gpt-oss-120b'},async()=>{calls++;throw Error('unreachable')});
  assert.equal(calls,0);
  assert.equal(provider.model,'openai/gpt-oss-120b');
+});
+
+test('frases reales de Valentino y el Corolla 2.0 quedan en el contexto de Groq',async()=>{
+ let request;
+ const provider=createProvider({AI_ENABLED:'true',AI_PROVIDER:'groq',GROQ_API_KEY:'test-key',GROQ_MODEL:'openai/gpt-oss-120b'},
+ async(url,options)=>{request=options;return {ok:true,json:async()=>({choices:[{message:{content:'Con gusto le orientamos.'}}]})};});
+ await provider.draft({
+   text:'Hola, ¿cuánto sale una eliminación de EGR para mi Toyota Corolla 2.0?',
+   history:[{role:'cliente',text:'Hola, ¿cuánto sale una eliminación de EGR para mi Toyota Corolla 2.0?'}],
+   tone:{greeting:'Saludos.',style:'Trato de usted, le y su'},
+   business:{},services:[],catalog:[],firstReply:true,kind:'price'
+ });
+ const prompt=JSON.parse(request.body).messages[0].content;
+ assert.match(prompt,/Indíquenos su requerimiento/);
+ assert.match(prompt,/Gracias por comunicarte con VALENTINO MOTOR'S/);
+ assert.match(prompt,/"hasEngine":true/);
+ assert.match(prompt,/"hasYear":false/);
+ assert.match(prompt,/NO vuelva a preguntar la motorización/);
+ assert.match(prompt,/usted\/le\/su/);
 });
