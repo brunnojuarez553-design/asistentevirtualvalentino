@@ -91,9 +91,11 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       }
       if(!url.pathname.startsWith('/api/') && url.pathname!=='/webhooks/meta'){
         if(req.method!=='GET')return send(405,{error:'Método no permitido'});
-        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/style.css':'dashboard/style.css','/relevamiento':'index.html'};
+        if(url.pathname==='/relevamiento'){
+          res.writeHead(302,{Location:'/#onboarding','Cache-Control':'no-store'});return res.end();
+        }
+        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
         if(!files[url.pathname])return send(404,{error:'No encontrado'});
-        if(url.pathname==='/relevamiento')res.removeHeader('Content-Security-Policy');
         const path=files[url.pathname];res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
       }
       if(url.pathname.startsWith('/api/')){
