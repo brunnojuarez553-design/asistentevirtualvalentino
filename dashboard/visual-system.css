@@ -354,3 +354,15 @@ main{padding:17px 16px 25px}
 /* Las fichas sin foto usan exactamente el mismo avatar/logo de la web oficial. */
 .catalog-entry .official-service-placeholder{width:52px!important;height:52px!important;object-fit:cover;border-radius:50%!important;border:1px solid rgba(232,0,15,.33);margin:2px 6px;flex:none;background:#181a20}
 @media(max-width:760px){.brand-copy strong{font-size:14px}.brand-copy small{font-size:8px}}
+
+/* Estado de Groq para pruebas conversacionales (no son envíos externos). */
+.ai-simulator-bar{display:flex;align-items:center;justify-content:space-between;gap:15px;border-block:1px solid var(--line);padding:14px 18px;background:rgba(17,21,28,.87)}
+.ai-simulator-indicator{display:flex;align-items:center;gap:12px;min-width:0}
+.ai-simulator-indicator strong{display:block;color:#edf1f5;font-size:12px;font-weight:600}
+.ai-simulator-indicator small{display:block;color:#909aa9;font-size:10px;line-height:1.45;margin-top:3px}
+.groq-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#dfb36c;box-shadow:0 0 0 4px rgba(223,179,108,.09)}
+.groq-dot.on{background:#64d7a3;box-shadow:0 0 0 4px rgba(100,215,163,.12)}
+.ai-simulator-bar .ghost-btn{white-space:nowrap;font-size:11px}
+.ai-simulator-bar .ghost-btn:disabled{opacity:.5;cursor:not-allowed}
+#groqSettingsStatus{color:#b9d9cd;font-weight:600!important}
+@media(max-width:760px){.ai-simulator-bar{flex-wrap:wrap;align-items:flex-start}.ai-simulator-bar .ghost-btn{width:100%;justify-content:center}}
