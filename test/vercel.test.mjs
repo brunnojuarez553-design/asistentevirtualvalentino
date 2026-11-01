@@ -37,3 +37,38 @@ test('handler serverless retains private API/auth mode and static HTML',async t=
  assert.equal(res.status,200);assert.equal((await res.json()).channel,'simulador');
  res=await fetch(base+'/health');assert.equal(res.status,200);assert.equal((await res.json()).outbound,false);
 });
+
+test('identidad visual global y todas las vistas están conectadas',async()=>{
+ const html=await readFile(new URL('../dashboard/index.html',import.meta.url),'utf8');
+ const css=await readFile(new URL('../dashboard/visual-system.css',import.meta.url),'utf8');
+ const js=await readFile(new URL('../dashboard/app.js',import.meta.url),'utf8');
+ for(const id of ['overview','inbox','catalog','config','onboarding','channels','loginScreen',
+   'toneForm','onboardingForm','serviceEditor','loginForm','mobileMenu','overviewConversations',
+   'overviewPending','overviewServices','overviewApproved']){
+   assert.match(html,new RegExp('id="'+id+'"'),'missing view/control '+id);
+ }
+ for(const view of ['overview','inbox','catalog','config','onboarding','channels']){
+   assert.match(html,new RegExp('data-view="'+view+'"'),'missing nav '+view);
+   assert.match(js,new RegExp("'"+view+"'"),'missing state '+view);
+ }
+ assert.match(html,/class="vm-mark"/);
+ assert.match(html,/visual-system.css/);
+ assert.match(css,/--red:#e8000f/);
+ assert.match(css,/prefers-reduced-motion/);
+ assert.doesNotMatch(html,/value="cornacchia.valentino92@gmail.com"/);
+});
+test('aplicación entrega CSS premium y redirige relevamiento al onboarding',async t=>{
+ const store={load:async()=>({config:null,conversations:[],alerts:[],audit:[],events:[]}),
+   save:async()=>{}};
+ const app=await createApp({DASHBOARD_TOKEN:'test-token'},store);
+ await new Promise(r=>app.listen(0,'127.0.0.1',r));
+ t.after(()=>new Promise(r=>app.close(r)));
+ const base='http://127.0.0.1:'+app.address().port;
+ const css=await fetch(base+'/visual-system.css');
+ assert.equal(css.status,200);
+ assert.match(css.headers.get('content-type'),/text\/css/);
+ assert.match(await css.text(),/VALENTINO MOTORS LG/);
+ const redirect=await fetch(base+'/relevamiento',{redirect:'manual'});
+ assert.equal(redirect.status,302);
+ assert.equal(redirect.headers.get('location'),'/'+'#onboarding');
+});
