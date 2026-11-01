@@ -1,4 +1,19 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Valentino Motors LG · Centro de atención</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head><body>
+<section id="loginScreen" class="login-screen" hidden aria-labelledby="loginTitle">
+  <div class="login-card">
+    <div class="login-brand-mark">V</div>
+    <p class="eyebrow">VALENTINO MOTORS LG · ACCESO PRIVADO</p>
+    <h1 id="loginTitle">BIENVENIDO AL PANEL.</h1>
+    <p class="muted">Administrá los servicios, consultas y conversaciones de Valentino Motors.</p>
+    <form id="loginForm" class="login-form">
+      <label>Correo electrónico<input type="email" id="loginEmail" autocomplete="username" required value="cornacchia.valentino92@gmail.com"></label>
+      <label>Contraseña<input type="password" id="loginPassword" autocomplete="current-password" required minlength="6"></label>
+      <p id="loginError" role="alert" aria-live="polite"></p>
+      <button type="submit" class="primary" id="loginSubmit">Ingresar al panel</button>
+    </form>
+    <small>Acceso exclusivo para usuarios autorizados. No se envían mensajes reales desde este entorno.</small>
+  </div>
+</section>
 <aside><a class="brand" href="/">V<span>VALENTINO<small>MOTORS / ATENCIÓN</small></span></a><p class="eyebrow">ESPACIO DE TRABAJO</p><button data-view="inbox" class="nav active">◉ Conversaciones</button><button data-view="catalog" class="nav">▦ Servicios</button><button data-view="config" class="nav">◇ Configuración de IA</button><a class="nav" href="/relevamiento" target="_blank">↗ Completar relevamiento</a><div class="connection"><i></i> Entorno de pruebas<small>Instagram y WhatsApp desconectados</small></div></aside>
 <main><header><div><p class="eyebrow">VALENTINO MOTORS LG / PANEL DE ATENCIÓN</p><h1>LA ATENCIÓN NO SE DETIENE.</h1><p class="muted">WhatsApp, Instagram y comentarios en un solo lugar. Valentino confirma personalmente cada turno.</p></div><button id="access">Acceso al panel</button></header>
 <div class="banner">MODO SIMULACIÓN <span>Canales desconectados: las respuestas NO se envían a WhatsApp ni a Instagram. Los comentarios se revisan antes de responder.</span></div><p id="error" role="status" aria-live="polite"></p>
