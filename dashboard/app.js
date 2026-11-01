@@ -58,7 +58,14 @@ function renderCatalog(){
     b.type='button';b.setAttribute('aria-label','Editar '+s.name);
     if(s.image_url && /^https:\/\//i.test(s.image_url)){
       const thumb=document.createElement('img');thumb.src=s.image_url;thumb.loading='lazy';thumb.alt='';thumb.referrerPolicy='no-referrer';b.append(thumb);
-    }else b.append(node('span','VM','catalog-placeholder'));
+    }else {
+      // Foto de perfil / logo tomado de la cabecera de valentinomotors.com.
+      const placeholder=document.createElement('img');
+      placeholder.src='https://res.cloudinary.com/dvvuwigmy/image/upload/w_80,h_80,c_fill,f_auto,q_70/v1779059651/IMG_6676_jbholt.jpg';
+      placeholder.alt='';placeholder.loading='lazy';
+      placeholder.className='catalog-placeholder official-service-placeholder';
+      b.append(placeholder);
+    }
     const info=node('span','','catalog-entry-info');
     info.append(node('strong',s.name),node('small',s.category||'General'),node('small',serviceStatus(s),'service-state'+(s.approved?' approved':'')));
     b.append(info);
