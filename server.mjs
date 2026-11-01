@@ -7,6 +7,7 @@ import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
+import {PanelAuth} from './lib/panel-auth.mjs';
 
 export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{})) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
