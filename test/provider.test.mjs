@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createProvider} from '../lib/provider.mjs';
+import {createProvider,resolveGroqModel,AIProviderError} from '../lib/provider.mjs';
 test('adaptador desactivado sin claves; activación exige configuración',()=>{assert.equal(createProvider({}),undefined);assert.throws(()=>createProvider({AI_ENABLED:'true'}));});
 test('adaptador usa Responses sin almacenamiento, limita salida y no expone clave',async()=>{
  let request;const p=createProvider({AI_ENABLED:'true',OPENAI_API_KEY:'fake-key',OPENAI_MODEL:'configured-model'},async(url,options)=>{request={url,...options};return {ok:true,json:async()=>({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'Borrador'}]}]})};});
@@ -63,4 +63,39 @@ test('la IA recibe solo copy comercial cuando revisión técnica/legal continúa
  assert.doesNotMatch(prompt,/Procedimiento sin validación|665/);
  assert.match(prompt,/pendiente: no confirmar compatibilidad/);
  assert.match(prompt,/NO uses voseo/);
+});
+
+test('modelo Llama retirado se migra automáticamente a GPT-OSS 120B con razonamiento corto',async()=>{
+ let request;
+ const p=createProvider({AI_ENABLED:'true',AI_PROVIDER:'groq',GROQ_API_KEY:'key-test',
+  GROQ_MODEL:'llama-3.3-70b-versatile'},async(url,options)=>{
+  request=options;
+  return {ok:true,json:async()=>({choices:[{message:{content:'LISTO'}}]})};
+ });
+ assert.equal(resolveGroqModel('llama-3.3-70b-versatile'),'openai/gpt-oss-120b');
+ assert.equal(p.model,'openai/gpt-oss-120b');
+ assert.equal(p.configuredModel,'llama-3.3-70b-versatile');
+ const check=await p.check();
+ assert.equal(check.ok,true);
+ const payload=JSON.parse(request.body);
+ assert.equal(payload.model,'openai/gpt-oss-120b');
+ assert.equal(payload.reasoning_effort,'low');
+ assert.equal(payload.max_completion_tokens,900);
+ assert.equal(request.headers.Authorization,'Bearer key-test');
+});
+test('diagnóstico Groq categoriza errores 401, 404 y 429 sin repetir cuerpo privado',async()=>{
+ for(const [http,code] of [[401,'invalid_key'],[404,'model_unavailable'],[429,'rate_limited']]){
+  const provider=createProvider({AI_ENABLED:'true',AI_PROVIDER:'groq',GROQ_API_KEY:'very-secret-token',
+    GROQ_MODEL:'openai/gpt-oss-120b'},async()=>({ok:false,status:http,
+      json:async()=>({error:'very-secret-token'})}));
+  await assert.rejects(()=>provider.check(),e=>e instanceof AIProviderError&&e.code===code
+    &&e.status===http&&!e.publicMessage.includes('very-secret-token'));
+ }
+});
+test('la API Groq no revela la clave y no fuerza pruebas al inicializar',()=>{
+ let calls=0;
+ const provider=createProvider({AI_ENABLED:'true',AI_PROVIDER:'groq',GROQ_API_KEY:'hidden',
+  GROQ_MODEL:'openai/gpt-oss-120b'},async()=>{calls++;throw Error('unreachable')});
+ assert.equal(calls,0);
+ assert.equal(provider.model,'openai/gpt-oss-120b');
 });
