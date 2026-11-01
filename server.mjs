@@ -8,6 +8,7 @@ import {Store} from './lib/store.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 import {PanelAuth} from './lib/panel-auth.mjs';
+import {readBody,requireRawWebhook} from './lib/http-body.mjs';
 
 export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{})) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
@@ -69,11 +70,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         for(const [key,value] of loginAttempts)if(now-value.since>900000)loginAttempts.delete(key);
         const attempt=loginAttempts.get(ip);
         if(attempt?.count>=6)return send(429,{error:'Demasiados intentos. Probá más tarde.'});
-        let raw='';
-        for await(const chunk of req){
-          raw+=chunk;
-          if(Buffer.byteLength(raw)>2048)return send(413,{error:'Solicitud demasiado grande'});
-        }
+        const raw=(await readBody(req,2048)).toString('utf8');
         let body;try{body=JSON.parse(raw)}catch{return send(400,{error:'Solicitud inválida'})}
         try{
           const session=await panelAuth.signIn(body?.email,body?.password);
@@ -126,16 +123,13 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       if(req.method!=='POST')return send(405,{error:'Método no permitido'});
       if(url.pathname==='/api/service-image') {
         if(!catalog)return send(503,{error:'La subida de fotos requiere configurar Supabase en el servidor'});
-        const chunks=[];let size=0;
-        for await(const chunk of req) {
-          size+=chunk.length;if(size>5242880)return send(413,{error:'La imagen supera 5 MB'});
-          chunks.push(chunk);
-        }
-        const imageUrl=await catalog.uploadImage(Buffer.concat(chunks),req.headers['content-type']);
+        const image=await readBody(req,5242880);
+        const imageUrl=await catalog.uploadImage(image,req.headers['content-type']);
         return send(200,{image_url:imageUrl});
       }
       if(url.pathname==='/webhooks/meta'&&env.META_WEBHOOKS_ENABLED!=='true')return send(503,{error:'Webhooks desactivados'});
-      let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return send(413,{error:'Mensaje demasiado grande'});}
+      if(url.pathname==='/webhooks/meta')requireRawWebhook(req);
+      const raw=(await readBody(req,65536)).toString('utf8');
       if(url.pathname==='/webhooks/meta'&&!signature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return send(403,{error:'Firma inválida'});
       let body;try{body=JSON.parse(raw);}catch{return send(400,{error:'JSON inválido'});}
       if(url.pathname==='/webhooks/meta') {if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});const events=metaEvents(body);await mutate(async d=>{for(const e of events)if(typeof e.text==='string'&&e.text.length<=4000)await incoming(d,e);});return send(200,{received:true,outbound:false});}
