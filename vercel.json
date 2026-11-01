@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": null,
+  "functions": {
+    "api/index.mjs": {
+      "includeFiles": "{config/default.json,dashboard/**,index.html}",
+      "maxDuration": 30,
+      "regions": [
+        "iad1"
+      ]
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index?vm_route=/$1"
+    }
+  ]
+}
