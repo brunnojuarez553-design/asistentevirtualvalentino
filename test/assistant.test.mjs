@@ -17,7 +17,7 @@ test('consulta de precio recibe orientación útil, turno pasa a revisión y rec
  const price=await run('cuánto cuesta');assert.equal(price.state,'ia');
  assert.match(price.reply,/motorización exacta/);assert.doesNotMatch(price.reply,/USD|\\$100/);
  const booking=await run('quiero un turno');assert.equal(booking.state,'revision');
- assert.match(booking.reply,/Valentino le confirmará personalmente/);
+ assert.match(booking.reply,/Valentino te confirmará personalmente/);
  assert.equal((await run('reclamo por garantía')).state,'humano');
 });
 test('modo humano no responde y Groq simula respuesta normal en el chat',async()=>{
