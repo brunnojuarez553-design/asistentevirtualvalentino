@@ -327,9 +327,9 @@ function notify(message,type='success'){
 function renderAiStatus(hasConversation){
   const enabled=aiStatus?.enabled===true;
   const status=$('#groqStatus'),help=$('#groqHelp'),settings=$('#groqSettingsStatus'),btn=$('#regenerateDraft');
-  status.textContent=enabled?'Groq conectado · '+(aiStatus.model||'modelo configurado'):'Groq pendiente de configurar';
+  status.textContent=enabled?'Groq configurado · '+(aiStatus.model||'modelo configurado'):'Groq pendiente de configurar';
   help.textContent=enabled?'Mensajes de prueba redactados con IA · no se envían a Meta.':'Solo respuestas de respaldo hasta cargar la API key en Vercel.';
-  settings.textContent=enabled?'Motor activo para simulación ('+(aiStatus.model||'modelo configurado')+').':'Motor inactivo. Configurá AI_ENABLED, AI_PROVIDER, GROQ_MODEL y GROQ_API_KEY en Vercel.';
+  settings.textContent=enabled?'Configuración detectada ('+(aiStatus.model||'modelo configurado')+'). Enviá una prueba para verificar que la clave funcione.':'Motor inactivo. Configurá AI_ENABLED, AI_PROVIDER, GROQ_MODEL y GROQ_API_KEY en Vercel.';
   $('#groqDot').classList.toggle('on',enabled);
   btn.disabled=!enabled||!hasConversation;
   btn.title=!enabled?'Primero configurá Groq en las variables privadas de Vercel.':!hasConversation?'Seleccioná una conversación para crear el borrador.':'Redactar sin enviar mensajes.';
