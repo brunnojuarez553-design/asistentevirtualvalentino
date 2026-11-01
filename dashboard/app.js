@@ -1,11 +1,11 @@
-let data,selected=null,token='',catalogServices=[],editingServiceId=null;
+let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token';
 const $=s=>document.querySelector(s);
 const labels={ia:'IA',revision:'Revisión',humano:'Humano'};
 const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instagram DM',instagram_comentario:'Instagram comentario'};
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error);return d;}
 function node(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e;}
 function fail(e){$('#error').textContent=e.message;}
-async function refresh(){try{const [workspace,services]=await Promise.all([api('workspace'),api('services')]);data=workspace;catalogServices=services.services;$('#error').textContent='';render();renderCatalog();}catch(e){fail(e);}}
+async function refresh(){try{const [workspace,services]=await Promise.all([api('workspace'),api('services')]);data=workspace;catalogServices=services.services;$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
  $('#total').textContent=data.conversations.length;$('#reviewCount').textContent=data.conversations.filter(c=>c.state==='revision').length;$('#humanCount').textContent=data.conversations.filter(c=>c.state==='humano').length;$('#alertCount').textContent=data.alerts.filter(a=>!a.resolved).length;
  const list=$('#conversations');list.replaceChildren();const filtered=data.conversations.filter(c=>!$('#filter').value||c.state===$('#filter').value);
@@ -17,14 +17,14 @@ function render(){
  const service=$('#service');const prev=service.value;service.replaceChildren(new Option('Elegir servicio aprobado',''));for(const s of data.config.services.filter(s=>s.approved===true))service.add(new Option(s.name,s.id));service.value=prev;
  $('#configJson').value=JSON.stringify({tone:data.config.tone,business:data.config.business,notice:data.config.notice},null,2);
 }
-$('#access').onclick=()=>{token=prompt('Clave de acceso al panel (solo si está configurada en el servidor)')||'';refresh();};
+$('#access').onclick=()=>{if(authMode==='supabase'){token='';showLogin(true);return;}token=prompt('Clave de acceso al panel (solo si está configurada en el servidor)')||'';refresh();};
 $('#new').onclick=()=>{selected=null;$('#name').value='';render();$('#text').focus();};$('#filter').onchange=render;
 $('#simulate').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{const c=await api('simulate',{text:$('#text').value,channel:$('#simulationChannel').value,serviceId:$('#service').value,vehicle:Object.fromEntries(['make','model','year','engine'].map(k=>[k,$('#'+k).value])),contact:$('#name').value||'Cliente de prueba',...(selected?{conversationId:selected}:{contact:$('#name').value||'Prueba '+(data.conversations.length+1)})});selected=c.id;$('#text').value='';await refresh();}catch(e){fail(e);}finally{b.disabled=false;}};
 $('#state').onchange=async()=>{try{await api('conversation',{id:selected,action:'state',state:$('#state').value});await refresh();}catch(e){fail(e);}};
 $('#reply').onsubmit=async e=>{e.preventDefault();try{await api('conversation',{id:selected,action:'reply',text:$('#replyText').value});await refresh();}catch(e){fail(e);}};
 $('#saveConfig').onclick=async()=>{try{await api('config',JSON.parse($('#configJson').value));$('#saved').textContent='Configuración guardada.';await refresh();}catch(e){fail(e);}};
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{$('#inbox').hidden=b.dataset.view!=='inbox';$('#catalog').hidden=b.dataset.view!=='catalog';$('#config').hidden=b.dataset.view!=='config';document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));});
-refresh();
+initPanel();
 
 /* =============================================================
    CATALOGO: edición segura mediante API autenticada del servidor.
@@ -131,4 +131,43 @@ $('#svcArchive').onclick=async()=>{
     editingServiceId=null;openService();await refresh();
   }catch(error){$('#serviceFeedback').textContent=error.message;}
   finally{$('#svcArchive').disabled=false;}
+};
+
+
+function showLogin(visible){
+  document.body.classList.toggle('login-required',visible);
+  $('#loginScreen').hidden=!visible;
+  if(visible){$('#loginPassword').value='';$('#loginError').textContent='';$('#loginEmail').focus();}
+}
+async function initPanel(){
+  try{
+    const response=await fetch('/auth/mode',{cache:'no-store'});
+    if(!response.ok)throw Error('No se pudo comprobar el estado de autenticación');
+    const mode=await response.json();
+    authMode=mode.mode==='supabase'?'supabase':'token';
+    if(authMode==='supabase'){
+      $('#access').textContent='Cerrar sesión';
+      showLogin(true);
+    }else{
+      showLogin(false);
+      await refresh();
+    }
+  }catch(error){$('#loginScreen').hidden=false;document.body.classList.add('login-required');$('#loginError').textContent=error.message;}
+}
+$('#loginForm').onsubmit=async event=>{
+  event.preventDefault();
+  const submit=$('#loginSubmit');
+  submit.disabled=true;
+  $('#loginError').textContent='';
+  try{
+    const response=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:$('#loginEmail').value.trim(),password:$('#loginPassword').value})});
+    const result=await response.json();
+    if(!response.ok||!result.access_token)throw Error(result.error||'No se pudo ingresar');
+    token=result.access_token;
+    $('#loginPassword').value='';
+    showLogin(false);
+    await refresh();
+  }catch(error){token='';showLogin(true);$('#loginError').textContent=error.message;}
+  finally{submit.disabled=false;}
 };
