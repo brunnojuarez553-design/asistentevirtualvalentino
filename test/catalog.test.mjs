@@ -13,13 +13,22 @@ test('validación: servicio nuevo guarda borrador sin habilitar precios automát
  assert.equal(s.reference_price_usd,310);
  assert.equal(toEngineService({...s,active:true}).prices.length,0);
 });
-test('rechaza imágenes inseguras, precios inválidos y aprobación sin revisión',()=>{
+test('separa aprobación comercial de revisión técnica y evita precios automáticos',()=>{
  assert.throws(()=>validateService({name:'Servicio de prueba',image_url:'javascript:alert(1)'}),/HTTPS/);
  assert.throws(()=>validateService({name:'Servicio de prueba',reference_price_usd:-5}),/positivo/);
- assert.throws(()=>validateService({name:'Servicio de prueba',approved:true}),/revisiones/);
- assert.throws(()=>validateService({name:'Servicio de prueba',approved:true,needs_technical_review:false,needs_legal_review:true}),/revisiones/);
- const ok=validateService({name:'Servicio aprobado',approved:true,needs_technical_review:false,needs_legal_review:false});
- assert.equal(ok.approved,true);
+ assert.throws(()=>validateService({name:'Servicio de prueba',approved:true}),/texto público/);
+ assert.throws(()=>validateService({name:'Servicio de prueba',approved:true,public_copy:'Texto',active:false}),/servicio activo/);
+ const commercial=validateService({name:'Servicio de prueba',approved:true,
+  public_copy:'Te orientamos sobre este servicio. Confírmanos tu vehículo.',needs_technical_review:true,
+  needs_legal_review:true,reference_price_usd:665});
+ assert.equal(commercial.approved,true);
+ assert.equal(commercial.needs_technical_review,true);
+ assert.equal(commercial.needs_legal_review,true);
+ const engine=toEngineService({...commercial,active:true});
+ assert.equal(engine.approved,true);
+ assert.equal(engine.needs_technical_review,true);
+ assert.equal(engine.needs_legal_review,true);
+ assert.deepEqual(engine.prices,[]);
 });
 test('Catálogo Supabase: crea, lista, modifica y archiva con servicio privado',async()=>{
  const bid=randomUUID();const saved=[];const calls=[];
@@ -64,7 +73,7 @@ test('API: crear/editar/archivar desde el panel no habilita atención real',asyn
  assert.equal(create.status,200);
  const id=create.body.service.id;assert.equal(create.body.service.approved,false);
  const update=await api('services',{id,name:'Chequeo integral pre-viaje',category:'Diagnóstico',
-   approved:true,needs_technical_review:false,needs_legal_review:false,reference_price_usd:120});
+   approved:true,public_copy:'Te ayudamos con el chequeo. Indícanos tu vehículo.',needs_technical_review:true,needs_legal_review:false,reference_price_usd:120});
  assert.equal(update.status,200);assert.equal(update.body.service.approved,true);
  const workspace=await api('workspace');
  assert.equal(workspace.body.config.services.find(x=>x.id===id).approved,true);
