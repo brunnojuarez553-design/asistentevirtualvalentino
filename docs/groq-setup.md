@@ -14,7 +14,7 @@ Proyecto: https://vercel.com/brunnojuarez553-designs-projects/asistentevirtualva
 | --- | --- |
 | `AI_ENABLED` | `true` |
 | `AI_PROVIDER` | `groq` |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `GROQ_API_KEY` | Clave privada creada en Groq (marcar Sensitive) |
 
 Activar **Production**. Si se quiere probar primero un deployment de desarrollo, agregar también **Preview**. Después hacer **Redeploy** de producción para que las funciones de Vercel reciban las variables nuevas.
@@ -23,7 +23,7 @@ El endpoint usado es `POST https://api.groq.com/openai/v1/chat/completions` con 
 
 ## 3. Probar dentro de Valentino
 
-Abrir https://asistentevirtualvalentino.vercel.app/#inbox e iniciar sesión. El indicador debe decir **“Groq configurado”**. Esto confirma que las variables necesarias existen, no que las llamadas estén autorizadas o tengan saldo.
+Abrir https://asistentevirtualvalentino.vercel.app/#inbox e iniciar sesión. El indicador mostrará **“Groq configurado (sin comprobar)”** hasta que uses el botón **Probar conexión**. Si la prueba tiene éxito, aparecerá **“Groq conectado y verificado”**. Este chequeo realiza una solicitud real pequeña, sin mensajes de clientes ni envíos a Meta.
 
 - Pulsar **+ Nueva** e ingresar por ejemplo: `Saludos, ¿cuánto sale el servicio EGR para mi Toyota Corolla 2025?`
 - La IA debe redactar una respuesta natural, pedir la motorización si es necesaria, ofrecer revisión de compatibilidad y **no inventar un precio**.
@@ -32,7 +32,9 @@ Abrir https://asistentevirtualvalentino.vercel.app/#inbox e iniciar sesión. El 
 - Probar una pregunta sobre ubicación y horarios; la IA debe usar únicamente la información validada guardada en Configuración de IA / Relevamiento.
 - Probar un comentario de Instagram; la propuesta debe mantenerse como **borrador moderado**.
 
-Si el indicador sigue desactivado, comprobar que el Redeploy utilizó las variables de Production. Si muestra configurado pero la respuesta avisa de proveedor no disponible, verificar el modelo, créditos, límites de la cuenta y el log del deployment de Vercel sin compartir el secreto.
+Si el indicador sigue desactivado, comprobá que el Redeploy utilizó variables de Production. El botón **Probar conexión** distingue fallos por clave (401), permisos de modelo (403), modelo retirado (404) y límite de uso (429). Los mensajes están redactados de forma segura y nunca muestran la clave privada. Revisá el panel de Groq si necesitás detalles.
+
+**Cambio importante (noviembre 2026):** Groq retiró el modelo `llama-3.3-70b-versatile` para cuentas Free y Developer el 16 de agosto de 2026. Recomiendan `openai/gpt-oss-120b`. El backend sustituye automáticamente el ID anterior si aún está guardado en Vercel, pero conviene actualizar `GROQ_MODEL` allí a `openai/gpt-oss-120b` y hacer Redeploy. En Vercel no reemplaces `GROQ_API_KEY` si la clave existente es válida. Documentación oficial: https://console.groq.com/docs/deprecations y https://console.groq.com/docs/models.
 
 ## 4. Estilo de Valentino
 
