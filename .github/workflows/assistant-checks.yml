@@ -2,6 +2,7 @@ name: Assistant checks
 on:
   push:
     branches:
+      - main
       - feat/asistente-valentino
   pull_request:
 jobs:
