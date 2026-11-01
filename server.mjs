@@ -54,7 +54,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
     d.events.push(id);audit(d,'mensaje_recibido',c.id);return c;
   }
-  const server=http.createServer(async(req,res)=>{
+  const handler=async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'");
@@ -178,7 +178,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       }
       return send(404,{error:'No encontrado'});
     }catch(e){send(e.status||500,{error:e.status?e.message:'No se pudo completar la operación; los datos no se confirmaron.'});}
-  });
-  return server;
+  };
+  return env.SERVERLESS==='true'?handler:http.createServer(handler);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){const app=await createApp();app.listen(Number(process.env.PORT||3000),'127.0.0.1',()=>console.log(`Valentino: http://127.0.0.1:${process.env.PORT||3000} · simulación, sin envíos reales`));}
