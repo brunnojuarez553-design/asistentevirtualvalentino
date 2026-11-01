@@ -5,7 +5,7 @@ const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instag
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error);return d;}
 function node(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e;}
 function fail(e){$('#error').textContent=e.message;}
-async function refresh(){try{const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus=ai;$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
+async function refresh(){try{const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
  $('#total').textContent=data.conversations.length;$('#reviewCount').textContent=data.conversations.filter(c=>c.state==='revision').length;$('#humanCount').textContent=data.conversations.filter(c=>c.state==='humano').length;$('#alertCount').textContent=data.alerts.filter(a=>!a.resolved).length;
  const list=$('#conversations');list.replaceChildren();const filtered=data.conversations.filter(c=>!$('#filter').value||c.state===$('#filter').value);
@@ -325,15 +325,47 @@ function notify(message,type='success'){
 
 /* Estado de Groq seguro: nunca revela API keys al navegador. */
 function renderAiStatus(hasConversation){
-  const enabled=aiStatus?.enabled===true;
+  const configured=aiStatus?.enabled===true;
+  const verified=configured&&aiStatus?.verified===true;
   const status=$('#groqStatus'),help=$('#groqHelp'),settings=$('#groqSettingsStatus'),btn=$('#regenerateDraft');
-  status.textContent=enabled?'Groq configurado · '+(aiStatus.model||'modelo configurado'):'Groq pendiente de configurar';
-  help.textContent=enabled?'Mensajes de prueba redactados con IA · no se envían a Meta.':'Solo respuestas de respaldo hasta cargar la API key en Vercel.';
-  settings.textContent=enabled?'Configuración detectada ('+(aiStatus.model||'modelo configurado')+'). Enviá una prueba para verificar que la clave funcione.':'Motor inactivo. Configurá AI_ENABLED, AI_PROVIDER, GROQ_MODEL y GROQ_API_KEY en Vercel.';
-  $('#groqDot').classList.toggle('on',enabled);
-  btn.disabled=!enabled||!hasConversation;
-  btn.title=!enabled?'Primero configurá Groq en las variables privadas de Vercel.':!hasConversation?'Seleccioná una conversación para crear el borrador.':'Redactar sin enviar mensajes.';
+  const model=aiStatus?.model||'modelo sin definir';
+  status.textContent=!configured?'Groq no configurado':verified?'Groq conectado y verificado · '+model:'Groq configurado (sin comprobar) · '+model;
+  const migrated=aiStatus?.migratedModel===true?' Se sustituyó automáticamente un modelo retirado.':'';
+  help.textContent=!configured?'Configurá tu API key desde Vercel para probar respuestas.':
+    verified?'Conexión comprobada. Las pruebas NO se envían a WhatsApp ni Instagram.':
+    'Usá «Probar conexión» para comprobar que Groq realmente responde.'+migrated;
+  settings.textContent=!configured?'Motor inactivo. Configurá AI_ENABLED, AI_PROVIDER, GROQ_MODEL y GROQ_API_KEY en Vercel.':
+    verified?'Groq verificado con '+model+'. Respuestas de prueba listas.':
+    'Variables detectadas. Todavía no se verificó la API. Modelo efectivo: '+model+'.'+migrated;
+  $('#groqDot').classList.toggle('on',verified);
+  btn.disabled=!configured||!hasConversation;
+  btn.title=!configured?'Primero configurá Groq en Vercel.':
+    !hasConversation?'Seleccioná una conversación para crear el borrador.':'Redactar sin enviar mensajes.';
+  $('#checkGroq').disabled=!configured;
 }
+$('#checkGroq').onclick=async()=>{
+  if(!aiStatus?.enabled)return;
+  const btn=$('#checkGroq');btn.disabled=true;btn.textContent='Verificando…';
+  try{
+    const result=await api('ai/check',{});
+    aiStatus.verified=result.ok===true;
+    renderAiStatus(!!data?.conversations?.some(c=>c.id===selected));
+    if(result.ok)notify('Conexión con Groq verificada. Modelo: '+result.model+'.');
+    else{
+      const message=result.message||'No se pudo verificar Groq.';
+      $('#groqHelp').textContent=message;
+      $('#groqSettingsStatus').textContent=message;
+      notify(message,'error');
+    }
+  }catch(error){
+    aiStatus.verified=false;renderAiStatus(!!selected);
+    $('#groqHelp').textContent=error.message;
+    notify(error.message,'error');
+  }finally{
+    btn.textContent='Probar conexión';
+    btn.disabled=!aiStatus?.enabled;
+  }
+};
 $('#regenerateDraft').onclick=async()=>{
   if(!selected || !aiStatus?.enabled)return;
   const btn=$('#regenerateDraft');btn.disabled=true;
