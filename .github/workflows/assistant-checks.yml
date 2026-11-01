@@ -15,6 +15,10 @@ jobs:
       - name: Validate JavaScript syntax
         run: |
           node --check server.mjs
+          node --check api/index.mjs
+          node --check lib/http-body.mjs
+          node --check lib/panel-auth.mjs
+          node --check lib/catalog.mjs
           node --check lib/engine.mjs
           node --check lib/security.mjs
           node --check dashboard/app.js
