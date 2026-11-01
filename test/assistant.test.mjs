@@ -12,13 +12,19 @@ test('cotiza solamente combinación exacta aprobada y vigente',()=>{
  const c=structuredClone(config);c.services[0].prices[0].validUntil='2000-01-01';assert.equal(quote(c,'demo',vehicle),null);
  c.services[0].prices[0].validUntil='2099-01-01';c.services[0].prices.push(c.services[0].prices[0]);assert.equal(quote(c,'demo',vehicle),null);
 });
-test('cotización incompleta y turno pasan a revisión; reclamo a humano',async()=>{
+test('consulta de precio recibe orientación útil, turno pasa a revisión y reclamo a humano',async()=>{
  const run=text=>respond({text,config,conversation:{state:'ia',messages:[]}});
- assert.equal((await run('cuánto cuesta')).state,'revision');assert.equal((await run('quiero un turno')).reply,null);assert.equal((await run('reclamo por garantía')).state,'humano');
+ const price=await run('cuánto cuesta');assert.equal(price.state,'ia');
+ assert.match(price.reply,/motorización exacta/);assert.doesNotMatch(price.reply,/USD|\\$100/);
+ const booking=await run('quiero un turno');assert.equal(booking.state,'revision');
+ assert.match(booking.reply,/Valentino le confirmará personalmente/);
+ assert.equal((await run('reclamo por garantía')).state,'humano');
 });
-test('modo humano no responde y proveedor externo siempre genera borrador',async()=>{
+test('modo humano no responde y Groq simula respuesta normal en el chat',async()=>{
  assert.equal((await respond({text:'hola',config,conversation:{state:'humano'}})).reply,null);
- const r=await respond({text:'hola',config,conversation:{state:'ia',messages:[]},provider:{draft:async()=> 'Texto generado'}});assert.equal(r.state,'revision');assert.equal(r.reply,null);
+ const r=await respond({text:'hola',config,conversation:{state:'ia',messages:[]},
+    provider:{draft:async()=> 'Saludos, con gusto le ayudamos.'}});
+ assert.equal(r.state,'ia');assert.equal(r.reply,'Saludos, con gusto le ayudamos.');
 });
 test('firmas sobre cuerpo crudo y normalización Meta',()=>{
  const raw='{"a":1}',sig='sha256='+createHmac('sha256','secret').update(raw).digest('hex');assert.ok(signature(raw,sig,'secret'));assert.ok(!signature(raw+' ',sig,'secret'));assert.ok(!signature(raw,sig,''));
@@ -32,10 +38,10 @@ test('API protege acceso, persiste estados, evita duplicados y no envía a Meta'
  assert.equal((await call('/api/workspace',null,false)).status,401);
  assert.equal((await call('/webhooks/meta',{})).status,503);
  assert.equal((await call('/api/simulate',{text:''})).status,400);
- const c=await (await call('/api/simulate',{id:'e1',text:'cuanto cuesta',contact:'Prueba'})).json();assert.equal(c.state,'revision');assert.equal(c.messages.length,1);
+ const c=await (await call('/api/simulate',{id:'e1',text:'cuanto cuesta',contact:'Prueba'})).json();assert.equal(c.state,'ia');assert.equal(c.messages.length,2);
  assert.deepEqual(await (await call('/api/simulate',{id:'e1',text:'cuanto cuesta'})).json(),{duplicate:true});
  await call('/api/conversation',{id:c.id,action:'state',state:'humano'});
- const paused=await (await call('/api/simulate',{conversationId:c.id,text:'hola'})).json();assert.equal(paused.state,'humano');assert.equal(paused.messages.length,2);
+ const paused=await (await call('/api/simulate',{conversationId:c.id,text:'hola'})).json();assert.equal(paused.state,'humano');assert.equal(paused.messages.length,3);
  assert.equal(state.conversations.length,1);assert.ok(state.audit.length>=3);
  assert.equal((await call('/api/conversation',{id:'missing',action:'state',state:'ia'})).status,404);
  assert.equal((await call('/')).status,200);
@@ -44,8 +50,8 @@ test('API protege acceso, persiste estados, evita duplicados y no envía a Meta'
 
 test('turnos tienen prioridad sobre cotizaciones y no se confirman automáticamente',async()=>{
  const r=await respond({text:'Cuánto cuesta y puedo agendar cita?',config,serviceId:'demo',vehicle,conversation:{state:'ia',channel:'whatsapp',messages:[]}});
- assert.equal(r.state,'revision');assert.equal(r.reply,null);assert.match(r.reason,/Valentino/);
- assert.match(r.draft,/confirmará personalmente/);
+ assert.equal(r.state,'revision');assert.match(r.reply,/confirmará personalmente/);assert.match(r.reason,/Valentino/);
+ assert.equal(r.draft,null);
 });
 test('comentarios de Instagram se derivan a moderación y no generan respuestas públicas',async()=>{
  const r=await respond({text:'Precio para mi Toyota',config,serviceId:'demo',vehicle,conversation:{state:'ia',channel:'instagram_comentario',messages:[]}});
@@ -72,4 +78,24 @@ test('se puede simular canal WhatsApp e Instagram sin envíos y sin alertas repe
  const next=await post({id:'test-comment-2',text:'Hola?',channel:'instagram_comentario',conversationId:c.id});
  assert.equal(next.messages.length,2);assert.equal(state.alerts.length,1);
  assert.equal(state.conversations.length,1);
+});
+
+
+test('pregunta sobre EGR Toyota Corolla 2025 usa Groq sin inventar precios',async()=>{
+ let context;
+ const result=await respond({text:'cuanto sale una eliminacion de egr para un toyota corolla 2025?',
+   config:{...config,services:[{id:'egr',name:'Blindaje EGR',approved:false,active:true,prices:[]}]},
+   conversation:{state:'ia',channel:'whatsapp',messages:[{role:'cliente',text:'cuanto sale una eliminacion de egr para un toyota corolla 2025?'}]},
+   provider:{draft:async input=>{context=input;return 'Saludos, con gusto le orientamos. ¿Nos confirma la motorización exacta de ese Corolla 2025? El equipo revisará compatibilidad y presupuesto.'}}});
+ assert.equal(result.state,'ia');assert.match(result.reply,/motorización/);
+ assert.equal(context.catalog.length,1);assert.equal(context.services.length,0);
+ assert.equal(context.kind,'price');
+ assert.doesNotMatch(result.reply,/USD|\\$[0-9]/);
+});
+test('una falla de Groq no deja al cliente sin respuesta y no revela precios',async()=>{
+ const result=await respond({text:'¿Cuánto cuesta la entonación?',config,
+   conversation:{state:'ia',channel:'whatsapp',messages:[]},
+   provider:{draft:async()=>{throw Error('secret token should not be revealed');}}});
+ assert.equal(result.state,'ia');assert.match(result.reply,/motorización exacta/);
+ assert.doesNotMatch(result.reply,/secret token/);
 });
