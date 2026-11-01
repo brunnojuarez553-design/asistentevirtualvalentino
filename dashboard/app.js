@@ -1,17 +1,17 @@
-let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token',activeView='overview',onboardingStep=0;
+let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token',activeView='overview',onboardingStep=0,aiStatus={enabled:false};
 const $=s=>document.querySelector(s);
 const labels={ia:'IA',revision:'Revisión',humano:'Humano'};
 const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instagram DM',instagram_comentario:'Instagram comentario'};
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error);return d;}
 function node(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e;}
 function fail(e){$('#error').textContent=e.message;}
-async function refresh(){try{const [workspace,services]=await Promise.all([api('workspace'),api('services')]);data=workspace;catalogServices=services.services;$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
+async function refresh(){try{const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus=ai;$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
  $('#total').textContent=data.conversations.length;$('#reviewCount').textContent=data.conversations.filter(c=>c.state==='revision').length;$('#humanCount').textContent=data.conversations.filter(c=>c.state==='humano').length;$('#alertCount').textContent=data.alerts.filter(a=>!a.resolved).length;
  const list=$('#conversations');list.replaceChildren();const filtered=data.conversations.filter(c=>!$('#filter').value||c.state===$('#filter').value);
  if(!filtered.length)list.append(node('p','Todavía no hay conversaciones en esta vista.','muted'));
  for(const c of filtered){const b=node('button','','item'+(c.id===selected?' selected':''));b.append(node('strong',c.contact),node('span',labels[c.state],'badge '+c.state),node('small',(channelLabels[c.channel]||c.channel)+' · '+(c.messages.at(-1)?.text.slice(0,90)||'')));b.onclick=()=>{selected=c.id;render();};list.append(b);}
- const c=data.conversations.find(c=>c.id===selected);$('#contact').textContent=c?.contact||'Probemos el asistente';$('#channel').textContent=c?(channelLabels[c.channel]||c.channel)+' · Sin envíos externos':'Una consulta simulada, una respuesta segura.';const simChannel=$('#simulationChannel');if(c)simChannel.value=['whatsapp','instagram','instagram_comentario'].includes(c.channel)?c.channel:'whatsapp';simChannel.disabled=!!c;$('#state').value=c?.state||'ia';$('#state').disabled=!c;$('#reply').hidden=!c;$('#reason').textContent=c?.reason||'';
+ const c=data.conversations.find(c=>c.id===selected);renderAiStatus(!!c);$('#contact').textContent=c?.contact||'Probemos el asistente';$('#channel').textContent=c?(channelLabels[c.channel]||c.channel)+' · Sin envíos externos':'Una consulta simulada, una respuesta segura.';const simChannel=$('#simulationChannel');if(c)simChannel.value=['whatsapp','instagram','instagram_comentario'].includes(c.channel)?c.channel:'whatsapp';simChannel.disabled=!!c;$('#state').value=c?.state||'ia';$('#state').disabled=!c;$('#reply').hidden=!c;$('#reason').textContent=c?.reason||'';
  const messages=$('#messages');messages.replaceChildren();if(!c)messages.append(node('div','Tu bandeja está lista. Escribí una consulta para probar el recorrido.','empty'));for(const m of c?.messages||[]){const el=node('article','','message '+(m.role==='cliente'?'customer':'team'));el.append(node('small',m.role==='cliente'?'CLIENTE':m.role==='equipo'?'EQUIPO · SIMULADO':'ASISTENTE · SIMULADO'),node('p',m.text));messages.append(el);}messages.scrollTop=messages.scrollHeight;$('#replyText').value=c?.draft||'';
  const alerts=$('#alerts');alerts.replaceChildren();for(const a of data.alerts.filter(a=>!a.resolved).slice(0,30)){const b=node('button',a.text,'alert');b.onclick=()=>{selected=a.conversationId;render();};alerts.append(b);}if(!alerts.children.length)alerts.append(node('p','Sin alertas pendientes.','muted'));
  const service=$('#service');const prev=service.value;service.replaceChildren(new Option('Elegir servicio aprobado',''));for(const s of data.config.services.filter(s=>s.approved===true))service.add(new Option(s.name,s.id));service.value=prev;
@@ -321,3 +321,28 @@ function notify(message,type='success'){
   if(toastTimeout)clearTimeout(toastTimeout);
   toastTimeout=setTimeout(()=>{el.hidden=true;},3700);
 }
+
+
+/* Estado de Groq seguro: nunca revela API keys al navegador. */
+function renderAiStatus(hasConversation){
+  const enabled=aiStatus?.enabled===true;
+  const status=$('#groqStatus'),help=$('#groqHelp'),settings=$('#groqSettingsStatus'),btn=$('#regenerateDraft');
+  status.textContent=enabled?'Groq conectado · '+(aiStatus.model||'modelo configurado'):'Groq pendiente de configurar';
+  help.textContent=enabled?'Mensajes de prueba redactados con IA · no se envían a Meta.':'Solo respuestas de respaldo hasta cargar la API key en Vercel.';
+  settings.textContent=enabled?'Motor activo para simulación ('+(aiStatus.model||'modelo configurado')+').':'Motor inactivo. Configurá AI_ENABLED, AI_PROVIDER, GROQ_MODEL y GROQ_API_KEY en Vercel.';
+  $('#groqDot').classList.toggle('on',enabled);
+  btn.disabled=!enabled||!hasConversation;
+  btn.title=!enabled?'Primero configurá Groq en las variables privadas de Vercel.':!hasConversation?'Seleccioná una conversación para crear el borrador.':'Redactar sin enviar mensajes.';
+}
+$('#regenerateDraft').onclick=async()=>{
+  if(!selected || !aiStatus?.enabled)return;
+  const btn=$('#regenerateDraft');btn.disabled=true;
+  btn.textContent='Redactando…';
+  try{
+    const result=await api('ai/draft',{id:selected});
+    $('#replyText').value=result.draft||'';
+    await refresh();
+    if(typeof notify==='function')notify('Borrador de Groq listo para revisión.');
+  }catch(error){fail(error);if(typeof notify==='function')notify(error.message,'error');}
+  finally{btn.textContent='Redactar borrador con Groq';btn.disabled=!aiStatus?.enabled||!selected;}
+};
