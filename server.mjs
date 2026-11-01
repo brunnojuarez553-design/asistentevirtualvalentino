@@ -94,9 +94,9 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(url.pathname==='/relevamiento'){
           res.writeHead(302,{Location:'/#onboarding','Cache-Control':'no-store'});return res.end();
         }
-        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
+        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css','/valentino-mark.svg':'dashboard/valentino-mark.svg'};
         if(!files[url.pathname])return send(404,{error:'No encontrado'});
-        const path=files[url.pathname];res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
+        const path=files[url.pathname];res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
       }
       if(url.pathname.startsWith('/api/')){
         if(panelAuth){
