@@ -1,31 +1,33 @@
 # Valentino Motors LG · Guía de voz y catálogo comercial · 2026-11-01
 
-## 1. Redacción del asistente
+## 1. Redacción del asistente (revisada contra muestras de Valentino)
 
-La indicación original del proyecto define **español venezolano de trato cercano y profesional**, **tuteo (tú / te)**, **sin voseo (vos / tenés / podés)**. La configuración anterior había impuesto trato de `usted`; quedó corregida en Supabase, `config/default.json` y `lib/provider.mjs`.
+La configuración provisional anterior usaba tuteo porque así figuraba en una guía genérica. **La evidencia más específica suministrada por Valentino el 26 de octubre de 2026 muestra un registro comercial más formal**, con **usted / le / su**, saludos cortos y pedidos técnicos expresados con cortesía. Esta evidencia más específica prevalece sobre las plantillas anteriores.
 
-- Voz cálida y natural, mensajes de WhatsApp generalmente de 1 a 3 oraciones, sin jerga excesiva ni fórmulas de robot.
-- Hablar como **el equipo de Valentino Motors LG**, no fingir ser Valentino como persona.
-- Saludar una sola vez por conversación; responder el tema principal primero, pedir solo datos faltantes; no repetir marca o año si el cliente ya los proporcionó.
-- Pedir marca/modelo/año/motorización y síntoma/servicio solo cuando sean relevantes.
-- Horario y dirección salen del `assistant_workspace`, nunca de la creatividad del modelo.
-- Un turno siempre queda sujeto a la confirmación manual de Valentino.
-- Precios, garantías, compatibilidades e intervenciones técnicas necesitan aprobación específica; los precios de referencia son internos.
-- Reclamos, diagnósticos complejos, intervenciones de seguridad y solicitudes humanas derivan al equipo.
-- Comentarios públicos de Instagram siguen pendientes de revisión humana antes de su publicación.
+### Frases auténticas recuperadas (fragmentos, no transcripciones completas)
 
-### Ejemplos de estilo cargados
+- «Gracias por comunicarte con VALENTINO MOTOR'S»
+- «Indíquenos su requerimiento»
+- «Para brindarle una atención de excelencia y formalizar su cita en nuestro sistema, le solicitamos cordialmente…»
 
-Estos seis ejemplos son **plantillas de redacción orientativas**, NO transcripciones verificadas de mensajes reales escritos por Valentino:
+La primera frase tiene «comunicarte» y se respeta como **excepción propia de la bienvenida original**; el cuerpo comercial y la gestión de citas utilizan predominantemente usted / le / su. En las notas anteriores también se identificaron «Saludos», «Con gusto» y «Buenas tardes» como expresiones frecuentes.
 
-1. Saludos, buen día. ¿En qué podemos ayudarte?
-2. Con gusto, ¿nos confirmas la marca, el modelo, el año y la motorización de tu vehículo?
-3. Para orientarte mejor, cuéntanos qué falla presenta o qué servicio necesitas.
-4. Envíanos el modelo, año y motor para verificar la compatibilidad y darte información correcta.
-5. Indícanos qué día te gustaría venir. Valentino revisa la agenda y te confirma personalmente la disponibilidad.
-6. Estamos en Catia La Mar, estado La Guaira. Te esperamos dentro de nuestro horario de atención.
+No conservamos aquí copias completas verificables de los videos o chats originales; no atribuir nuevas frases o ejemplos redactados por IA como citas literales de Valentino.
 
-Si se aportan conversaciones auténticas y autorizadas del taller, se pueden añadir en **Configuración de IA → Ejemplos del estilo de Valentino** para afinar su voz. No introducir datos personales identificables ni chats completos de clientes sin necesidad.
+### Política operativa aplicada en `lib/valentino-voice.mjs`
+
+- Hablar como el **equipo de Valentino Motors LG**, no fingir ser Valentino en persona.
+- Respuesta breve, educada y útil a preguntas normales; más estructurada al recopilar datos para una cita o presupuesto.
+- «Con gusto le orientamos», «Indíquenos», «¿Nos confirma…?», «le estaremos confirmando» en contexto; sin voseo argentino.
+- Un solo saludo por conversación, sin doble «con gusto» ni formulismos redundantes.
+- Recordar datos ya recibidos. Si el cliente dijo «Toyota Corolla 2.0», **2.0 ya es la cilindrada**: si falta el año, preguntar el año, no repetir qué motor tiene.
+- Mantener precios, garantías, compatibilidades e intervenciones sujetas a revisión humana. No prometer modificaciones de emisiones ni confirmar una cita automáticamente.
+- Comentarios de Instagram requieren revisión antes de ser publicados.
+- La IA recibe `verifiedPhrases` como fragmentos auténticos separados de `examples`, que son **plantillas editables nuevas**, no muestras reales.
+
+### Cambio en el panel
+
+**Configuración de IA** muestra ahora los fragmentos originales recuperados y las plantillas de respuesta por separado. Tanto los parámetros de voz como el catálogo comercial están sincronizados con Supabase. Las conversaciones históricas no se reescriben automáticamente; el estilo nuevo rige para respuestas posteriores.
 
 ## 2. Catálogo comercial en Supabase
 
@@ -45,7 +47,7 @@ El 2026-11-01 se revisaron los 11 servicios de `vm_services`, se asignaron categ
 | Toyota Tacoma 2GR-FKS reprogramación (fase 2) | Reprogramación | Copy aprobado / revisión técnica y legal pendiente |
 | Toyota Tacoma 2GR-FKS restauración (fase 1) | Entonación y mantenimiento | Copy aprobado / revisión técnica pendiente |
 
-**Verificación de DB:** 11/11 aprobados comercialmente con texto público; 11 con revisión técnica aún pendiente; 7 con revisión legal pendiente. Se conservaron `reference_price_usd` y no se crearon reglas `vm_price_rules` aprobadas.
+**Verificación de DB:** 11/11 aprobados comercialmente con texto público en tratamiento formal, sin restos de tuteo en las fichas; 11 con revisión técnica aún pendiente; 7 con revisión legal pendiente. Se conservaron `reference_price_usd` y no se crearon reglas `vm_price_rules` aprobadas.
 
 ### Regla del software
 
