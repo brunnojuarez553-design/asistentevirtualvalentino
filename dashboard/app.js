@@ -135,6 +135,7 @@ $('#svcArchive').onclick=async()=>{
 
 
 function showLogin(visible){
+  document.body.classList.remove('await-auth');
   document.body.classList.toggle('login-required',visible);
   $('#loginScreen').hidden=!visible;
   if(visible){$('#loginPassword').value='';$('#loginError').textContent='';$('#loginEmail').focus();}
