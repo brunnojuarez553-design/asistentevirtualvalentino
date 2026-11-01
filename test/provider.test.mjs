@@ -61,7 +61,7 @@ test('la IA recibe solo copy comercial cuando revisión técnica/legal continúa
  const prompt=JSON.parse(request.body).messages[0].content;
  assert.match(prompt,/Te orientamos para confirmar la motorización/);
  assert.doesNotMatch(prompt,/Procedimiento sin validación|665/);
- assert.match(prompt,/pendiente: no confirmar compatibilidad/);
+ assert.match(prompt,/PENDIENTE; no garantizar precio, ejecución, compatibilidad ni resultado/);
  assert.match(prompt,/ni voseo argentino/);
 });
 
