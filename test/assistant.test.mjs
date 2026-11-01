@@ -15,7 +15,7 @@ test('cotiza solamente combinación exacta aprobada y vigente',()=>{
 test('consulta de precio recibe orientación útil, turno pasa a revisión y reclamo a humano',async()=>{
  const run=text=>respond({text,config,conversation:{state:'ia',messages:[]}});
  const price=await run('cuánto cuesta');assert.equal(price.state,'ia');
- assert.match(price.reply,/motorización exacta/);assert.doesNotMatch(price.reply,/USD|\\$100/);
+ assert.match(price.reply,/motor tiene tu vehículo/);assert.doesNotMatch(price.reply,/USD|\\$100/);
  const booking=await run('quiero un turno');assert.equal(booking.state,'revision');
  assert.match(booking.reply,/Valentino te confirmará personalmente/);
  assert.equal((await run('reclamo por garantía')).state,'humano');
@@ -50,7 +50,7 @@ test('API protege acceso, persiste estados, evita duplicados y no envía a Meta'
 
 test('turnos tienen prioridad sobre cotizaciones y no se confirman automáticamente',async()=>{
  const r=await respond({text:'Cuánto cuesta y puedo agendar cita?',config,serviceId:'demo',vehicle,conversation:{state:'ia',channel:'whatsapp',messages:[]}});
- assert.equal(r.state,'revision');assert.match(r.reply,/confirmará personalmente/);assert.match(r.reason,/Valentino/);
+ assert.equal(r.state,'revision');assert.match(r.reply,/te confirma personalmente/);assert.match(r.reason,/Valentino/);
  assert.equal(r.draft,null);
 });
 test('comentarios de Instagram se derivan a moderación y no generan respuestas públicas',async()=>{
@@ -105,7 +105,7 @@ test('bloquea una cotización monetaria inventada por Groq sin reglas aprobadas'
   conversation:{state:'ia',messages:[],channel:'whatsapp'},
   provider:{draft:async()=> 'Cuesta USD 750 y tiene garantía de 3 años.'}});
  assert.equal(response.state,'ia');
- assert.match(response.reply,/motorización exacta/);
+ assert.match(response.reply,/motor tiene tu vehículo/);
  assert.doesNotMatch(response.reply,/750|USD|3 años/);
  assert.match(response.reason,/bloqueó un importe/);
 });
@@ -123,7 +123,9 @@ test('estado de Groq no revela secretos ni activa envíos reales',async t=>{
  const status=await response.json();
  assert.equal(status.enabled,true);
  assert.equal(status.provider,'groq');
- assert.equal(status.model,'llama-3.3-70b-versatile');
+ assert.equal(status.model,'openai/gpt-oss-120b');
+ assert.equal(status.migratedModel,true);
+ assert.equal(status.connectionVerified,false);
  assert.equal(status.outbound,false);
  assert.ok(!JSON.stringify(status).includes('super-private-test-key'));
 });
@@ -139,4 +141,24 @@ test('sin Groq no ofrece borrador en línea ni envía mensajes',async t=>{
  assert.equal(response.status,503);
  assert.match((await response.json()).error,/Groq/);
  assert.equal(state.conversations.length,0);
+});
+
+test('respaldo no repite saludo ni pregunta el motor 2.0 que ya indicó el cliente',async()=>{
+ const cfg={...config,tone:{greeting:'Saludos, ¡con gusto te ayudamos!'}};
+ const result=await respond({text:'Hola, quiero saber cuánto sale una eliminación de EGR para un Toyota Corolla 2.0',
+  config:cfg,conversation:{state:'ia',messages:[]},provider:{draft:async()=>{throw new Error('unavailable')}}});
+ assert.equal(result.state,'ia');
+ assert.equal(result.reply.match(/con gusto te ayudamos/gi)?.length,1);
+ assert.match(result.reply,/¿nos confirmas de qué año es\?/i);
+ assert.doesNotMatch(result.reply,/¿nos confirmas qué motor tiene tu vehículo\?/i);
+ assert.doesNotMatch(result.reply,/\busted\b|\bpodés\b|\btenés\b/i);
+});
+test('el error seguro de Groq aparece sin exponer mensajes técnicos ni secretos',async()=>{
+ const err=new Error('Authorization: Bearer private-token');
+ err.publicMessage='Groq rechazó la API key (401). Revisá GROQ_API_KEY en Vercel.';
+ const result=await respond({text:'¿Cuánto cuesta?',config,conversation:{state:'ia',messages:[]},
+   provider:{draft:async()=>{throw err}}});
+ assert.equal(result.state,'ia');
+ assert.match(result.reason,/API key \(401\)/);
+ assert.doesNotMatch(JSON.stringify(result),/private-token/);
 });
