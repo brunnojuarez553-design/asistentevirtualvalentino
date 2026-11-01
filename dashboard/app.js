@@ -1,4 +1,4 @@
-let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token';
+let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token',activeView='overview',onboardingStep=0;
 const $=s=>document.querySelector(s);
 const labels={ia:'IA',revision:'Revisión',humano:'Humano'};
 const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instagram DM',instagram_comentario:'Instagram comentario'};
@@ -15,15 +15,19 @@ function render(){
  const messages=$('#messages');messages.replaceChildren();if(!c)messages.append(node('div','Tu bandeja está lista. Escribí una consulta para probar el recorrido.','empty'));for(const m of c?.messages||[]){const el=node('article','','message '+(m.role==='cliente'?'customer':'team'));el.append(node('small',m.role==='cliente'?'CLIENTE':m.role==='equipo'?'EQUIPO · SIMULADO':'ASISTENTE · SIMULADO'),node('p',m.text));messages.append(el);}messages.scrollTop=messages.scrollHeight;$('#replyText').value=c?.draft||'';
  const alerts=$('#alerts');alerts.replaceChildren();for(const a of data.alerts.filter(a=>!a.resolved).slice(0,30)){const b=node('button',a.text,'alert');b.onclick=()=>{selected=a.conversationId;render();};alerts.append(b);}if(!alerts.children.length)alerts.append(node('p','Sin alertas pendientes.','muted'));
  const service=$('#service');const prev=service.value;service.replaceChildren(new Option('Elegir servicio aprobado',''));for(const s of data.config.services.filter(s=>s.approved===true))service.add(new Option(s.name,s.id));service.value=prev;
- $('#configJson').value=JSON.stringify({tone:data.config.tone,business:data.config.business,notice:data.config.notice},null,2);
+ renderOverview();
+ syncSettings();
+
 }
 $('#access').onclick=()=>{if(authMode==='supabase'){token='';showLogin(true);return;}token=prompt('Clave de acceso al panel (solo si está configurada en el servidor)')||'';refresh();};
 $('#new').onclick=()=>{selected=null;$('#name').value='';render();$('#text').focus();};$('#filter').onchange=render;
 $('#simulate').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{const c=await api('simulate',{text:$('#text').value,channel:$('#simulationChannel').value,serviceId:$('#service').value,vehicle:Object.fromEntries(['make','model','year','engine'].map(k=>[k,$('#'+k).value])),contact:$('#name').value||'Cliente de prueba',...(selected?{conversationId:selected}:{contact:$('#name').value||'Prueba '+(data.conversations.length+1)})});selected=c.id;$('#text').value='';await refresh();}catch(e){fail(e);}finally{b.disabled=false;}};
 $('#state').onchange=async()=>{try{await api('conversation',{id:selected,action:'state',state:$('#state').value});await refresh();}catch(e){fail(e);}};
 $('#reply').onsubmit=async e=>{e.preventDefault();try{await api('conversation',{id:selected,action:'reply',text:$('#replyText').value});await refresh();}catch(e){fail(e);}};
-$('#saveConfig').onclick=async()=>{try{await api('config',JSON.parse($('#configJson').value));$('#saved').textContent='Configuración guardada.';await refresh();}catch(e){fail(e);}};
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{$('#inbox').hidden=b.dataset.view!=='inbox';$('#catalog').hidden=b.dataset.view!=='catalog';$('#config').hidden=b.dataset.view!=='config';document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));});
+// La configuración se guarda mediante formularios accesibles; nunca mostrando JSON técnico al cliente.
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
+// Se inicia luego de registrar todas las interacciones.
 initPanel();
 
 /* =============================================================
