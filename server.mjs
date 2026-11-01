@@ -11,7 +11,10 @@ import {PanelAuth} from './lib/panel-auth.mjs';
 
 export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{})) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
-  if(env.NODE_ENV==='production' && (!env.DASHBOARD_TOKEN || env.DASHBOARD_TOKEN.length<32 || env.STORAGE!=='supabase'))throw Error('Production requires Supabase and a dashboard token of at least 32 characters');
+  const authMode=env.AUTH_MODE || (env.NODE_ENV==='production'?'supabase':'token');
+  if(env.NODE_ENV==='production' && (authMode!=='supabase'||env.STORAGE!=='supabase'))throw Error('Production requires Supabase Auth and Supabase storage');
+  const panelAuth=authMode==='supabase'?
+    new PanelAuth({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,secretKey:env.SUPABASE_SERVICE_ROLE_KEY}):null;
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
   const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
