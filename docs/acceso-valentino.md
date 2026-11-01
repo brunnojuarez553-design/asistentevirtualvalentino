@@ -32,7 +32,7 @@ where b.slug='valentino-motors';
 ```
 
 ## Requisitos del panel
-- El módulo `lib/panel-auth.mjs` prepara la comprobación del usuario mediante Supabase Auth y `vm_staff`. **Todavía no está enlazado con las rutas del servidor ni con la pantalla de login**.
-- El despliegue de producción deberá requerir sesión válida y autorización por usuario. La clave de service role permanece sólo en el backend.
+- El módulo `lib/panel-auth.mjs` está conectado al servidor: `POST /auth/login` autentica contra Supabase Auth y `GET /api/*` valida token de sesión y pertenencia activa a `vm_staff`. El panel incluye pantalla de login y cierre de sesión; no existe sesión persistente en el navegador.
+- La cuenta de Valentino ya fue creada, confirmada y asignada como `owner` en `vm_staff`. El modo de producción requiere `AUTH_MODE=supabase` y `STORAGE=supabase`. La clave service_role permanece sólo en el backend; ver [vercel-deploy.md](vercel-deploy.md).
 - No conectar Meta ni hacer envíos reales hasta terminar autenticación, despliegue, permisos y pruebas de coexistencia.
 - Nunca registrar ni replicar la contraseña temporal del cliente en commits, issues, README, logs o variables visibles.
