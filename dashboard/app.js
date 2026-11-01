@@ -236,6 +236,8 @@ function syncSettings(){
     $('#toneGreeting').value=t.greeting||'';
     $('#toneStyle').value=t.style||'';
     $('#toneExamples').value=Array.isArray(t.examples)?t.examples.join('\n'):'';
+    const verified=$('#verifiedVoiceList');
+    if(verified){verified.replaceChildren();for(const phrase of (t.verifiedPhrases||[])) verified.append(node('li',phrase));}
   }
   if(!$('#onboardingForm').contains(document.activeElement)){
     $('#obName').value=b.name||'Valentino Motors LG';
