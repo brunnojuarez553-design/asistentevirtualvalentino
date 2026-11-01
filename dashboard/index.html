@@ -1,22 +1,52 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Valentino Motors LG · Centro de atención</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head><body class="await-auth">
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Valentino Motors LG · Centro de atención</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/visual-system.css"><script type="module" src="/app.js"></script></head><body class="await-auth">
 <section id="loginScreen" class="login-screen" hidden aria-labelledby="loginTitle">
   <div class="login-card">
-    <div class="login-brand-mark">V</div>
+    <div class="login-brand-wrap"><div class="vm-mark vm-mark--large" aria-hidden="true"><span>VM</span></div><div class="brand-copy"><strong>VALENTINO</strong><small>MOTORS LG / CONTROL CENTER</small></div></div>
     <p class="eyebrow">VALENTINO MOTORS LG · ACCESO PRIVADO</p>
-    <h1 id="loginTitle">BIENVENIDO AL PANEL.</h1>
-    <p class="muted">Administrá los servicios, consultas y conversaciones de Valentino Motors.</p>
+    <h1 id="loginTitle">EL CONTROL <span class="text-red">EMPIEZA ACÁ.</span></h1>
+    <p class="muted">Tu centro de operaciones para servicios, consultas y atención inteligente. Una experiencia exclusiva Valentino Motors.</p>
     <form id="loginForm" class="login-form">
       <label>Correo electrónico<input type="email" id="loginEmail" autocomplete="username" required value="cornacchia.valentino92@gmail.com"></label>
-      <label>Contraseña<input type="password" id="loginPassword" autocomplete="current-password" required minlength="6"></label>
+      <label>Contraseña<div class="password-field"><input type="password" id="loginPassword" autocomplete="current-password" required minlength="6"><button type="button" id="togglePassword" aria-label="Mostrar contraseña" title="Mostrar contraseña">Ver</button></div></label>
       <p id="loginError" role="alert" aria-live="polite"></p>
       <button type="submit" class="primary" id="loginSubmit">Ingresar al panel</button>
     </form>
     <small>Acceso exclusivo para usuarios autorizados. No se envían mensajes reales desde este entorno.</small>
   </div>
 </section>
-<aside><a class="brand" href="/">V<span>VALENTINO<small>MOTORS / ATENCIÓN</small></span></a><p class="eyebrow">ESPACIO DE TRABAJO</p><button data-view="inbox" class="nav active">◉ Conversaciones</button><button data-view="catalog" class="nav">▦ Servicios</button><button data-view="config" class="nav">◇ Configuración de IA</button><a class="nav" href="/relevamiento" target="_blank">↗ Completar relevamiento</a><div class="connection"><i></i> Entorno de pruebas<small>Instagram y WhatsApp desconectados</small></div></aside>
-<main><header><div><p class="eyebrow">VALENTINO MOTORS LG / PANEL DE ATENCIÓN</p><h1>LA ATENCIÓN NO SE DETIENE.</h1><p class="muted">WhatsApp, Instagram y comentarios en un solo lugar. Valentino confirma personalmente cada turno.</p></div><button id="access">Acceso al panel</button></header>
-<div class="banner">MODO SIMULACIÓN <span>Canales desconectados: las respuestas NO se envían a WhatsApp ni a Instagram. Los comentarios se revisan antes de responder.</span></div><p id="error" role="status" aria-live="polite"></p>
+<svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 1 1 16.1-4z"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4"/></symbol>
+<symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 4v-2h6v2M9 12l2 2 4-4m-6 8h6"/></symbol>
+<symbol id="i-plug" viewBox="0 0 24 24"><path d="M8 2v5m8-5v5M7 7h10v4a5 5 0 0 1-10 0V7Zm5 9v6M4 22h16"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.2 2.2m8.4 8.4 2.2 2.2m0-12.8-2.2 2.2M7.8 16.2l-2.2 2.2"/><circle cx="12" cy="12" r="4"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12h4"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 9 4v5c0 6-4 9-9 11-5-2-9-5-9-11V6l9-4Z"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+<symbol id="i-log-out" viewBox="0 0 24 24"><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M16 16l4-4-4-4m4 4H9"/></symbol>
+<symbol id="i-trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8m-6 0h6v6"/></symbol>
+</svg>
+<aside class="sidebar"><a class="brand" href="/" aria-label="Valentino Motors · Inicio"><span class="vm-mark" aria-hidden="true"><span>VM</span></span><span class="brand-copy"><strong>VALENTINO</strong><small>MOTORS LG <em>·</em> ATENCIÓN</small></span></a>
+<div class="sidebar-label">WORKSPACE <span>01 / CONTROL</span></div>
+<nav class="sidebar-nav" aria-label="Navegación principal">
+<button data-view="overview" class="nav active"><svg class="ico"><use href="#i-grid"/></svg><span>Resumen</span></button>
+<button data-view="inbox" class="nav"><svg class="ico"><use href="#i-chat"/></svg><span>Conversaciones</span></button>
+<button data-view="catalog" class="nav"><svg class="ico"><use href="#i-layers"/></svg><span>Servicios</span></button>
+<button data-view="config" class="nav"><svg class="ico"><use href="#i-cpu"/></svg><span>Configuración de IA</span></button>
+<button data-view="onboarding" class="nav"><svg class="ico"><use href="#i-clipboard"/></svg><span>Relevamiento</span></button>
+<button data-view="channels" class="nav"><svg class="ico"><use href="#i-plug"/></svg><span>Estado de canales</span></button>
+</nav>
+<div class="sidebar-bottom"><div class="sidebar-status"><span class="status-light"></span><div><strong>Entorno controlado</strong><small>WhatsApp e Instagram sin conectar</small></div></div><div class="sidebar-signature">VALENTINO MOTORS <span>· V1 CONTROL</span></div></div>
+</aside>
+<main><div class="mobile-top"><a class="mobile-brand" href="/" aria-label="Valentino Motors"><span class="vm-mark"><span>VM</span></span><span>VALENTINO MOTORS</span></a><button type="button" id="mobileMenu" aria-label="Abrir navegación" aria-expanded="false"><svg class="ico"><use href="#i-grid"/></svg></button></div>
+<header class="hero-header"><div class="hero-copy"><p class="eyebrow"><span class="accent-bar"></span> VALENTINO MOTORS LG <span class="eyebrow-secondary">/ PANEL DE ATENCIÓN</span></p><h1>LA ATENCIÓN <span>NO SE DETIENE.</span></h1><p class="muted">Una sola plataforma para administrar servicios, consultas y atención inteligente.</p></div><div class="header-actions"><span class="user-pill"><svg class="ico"><use href="#i-shield"/></svg> Acceso seguro</span><button id="access" class="logout-btn"><svg class="ico"><use href="#i-log-out"/></svg><span>Cerrar sesión</span></button></div></header>
+<div class="banner"><span class="banner-icon"><svg class="ico"><use href="#i-bell"/></svg></span><strong>MODO SIMULACIÓN</strong> <span>WhatsApp e Instagram permanecen desconectados. Todas las pruebas son internas y no se envían a clientes.</span></div><p id="error" role="status" aria-live="polite"></p>
 <section id="inbox"><div class="metrics"><article><span>Conversaciones</span><strong id="total">0</strong></article><article><span>En revisión</span><strong id="reviewCount">0</strong></article><article><span>Atención humana</span><strong id="humanCount">0</strong></article><article><span>Alertas pendientes</span><strong id="alertCount">0</strong></article></div>
 <div class="workspace"><section class="panel list"><div class="panelhead"><h2>Bandeja de entrada</h2><button id="new">+ Nueva</button></div><label>Filtrar estado<select id="filter"><option value="">Todos</option><option value="ia">IA</option><option value="revision">Revisión</option><option value="humano">Humano</option></select></label><div id="conversations"></div></section>
 <section class="panel conversation"><div class="panelhead"><div><h2 id="contact">Probemos el asistente</h2><small id="channel">Una consulta simulada, una respuesta segura.</small></div><select id="state" aria-label="Estado de atención"><option value="ia">IA activa</option><option value="revision">Revisión</option><option value="humano">Humano</option></select></div><div id="messages" class="messages"><div class="empty"><h3>Tu nueva bandeja está lista</h3><p>Escribí una consulta para probar el recorrido.</p></div></div><div id="reason"></div><form id="simulate"><label>Canal que querés probar<select id="simulationChannel"><option value="whatsapp">WhatsApp</option><option value="instagram">Instagram · mensaje privado</option><option value="instagram_comentario">Instagram · comentario público</option></select></label><label>Mensaje del cliente<textarea id="text" required maxlength="4000" placeholder="Hola, ¿cuánto cuesta el servicio para mi auto?"></textarea></label><details><summary>Datos para probar una cotización</summary><label>Servicio<select id="service"><option value="">Elegir servicio aprobado</option></select></label><div class="vehicle"><input id="make" aria-label="Marca" placeholder="Marca"><input id="model" aria-label="Modelo" placeholder="Modelo"><input id="year" aria-label="Año" placeholder="Año"><input id="engine" aria-label="Motor" placeholder="Motor exacto"></div></details><div class="compose"><input id="name" placeholder="Nombre de prueba" maxlength="120"><button class="primary">Simular mensaje ↗</button></div></form><form id="reply"><label>Respuesta del equipo<textarea id="replyText" maxlength="4000" placeholder="Revisá o escribí la respuesta que aprobarías…"></textarea></label><button>Guardar respuesta aprobada (simulada)</button></form></section></div><section class="panel alerts"><h2>Alertas del equipo</h2><div id="alerts"></div></section></section>
