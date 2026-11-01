@@ -101,7 +101,7 @@ $('#serviceEditor').onsubmit=async e=>{
     const saved=catalogServices.find(s=>s.id===editingServiceId);
     if(saved)openService(saved);
     renderCatalog();
-    $('#serviceFeedback').textContent='Servicio guardado correctamente en '+(data.mode==='simulation'?'el catálogo configurado.':'Supabase.');
+    $('#serviceFeedback').textContent='Servicio guardado correctamente en el catálogo.';notify('Servicio guardado correctamente.');
   }catch(error){$('#serviceFeedback').textContent=error.message;}
   finally{button.disabled=false;}
 };
@@ -123,6 +123,7 @@ $('#svcUpload').onclick=async()=>{
     $('#svcImage').value=json.image_url;
     $('#svcPreview').src=json.image_url;$('#svcPreview').hidden=false;
     $('#serviceFeedback').textContent='Imagen subida. Guardá el servicio para asociarla a su ficha.';
+    notify('Imagen cargada. Guardá el servicio para aplicar el cambio.');
   }catch(error){$('#serviceFeedback').textContent=error.message;}
   finally{$('#svcUpload').disabled=false;}
 };
@@ -245,7 +246,7 @@ $('#toneForm').onsubmit=async e=>{
       examples:$('#toneExamples').value.split(/\r?\n/).map(t=>t.trim()).filter(Boolean).slice(0,30)};
     if(!tone.greeting||!tone.style)throw Error('Completá el saludo y el estilo de comunicación.');
     await api('config',{tone,business:data.config.business,notice:data.config.notice});
-    await refresh();feedback.textContent='Configuración guardada correctamente.';
+    await refresh();feedback.textContent='Configuración guardada correctamente.';notify('La personalidad de la IA se guardó correctamente.');
   }catch(error){feedback.textContent=error.message;}finally{btn.disabled=false;}
 };
 function updateOnboardingStep(){
@@ -286,7 +287,7 @@ $('#onboardingForm').onsubmit=async e=>{
     if(Object.values(business).some(value=>typeof value==='string'&&!value.trim()))
       throw Error('Completá todos los datos del relevamiento.');
     await api('config',{tone:data.config.tone,business,notice:data.config.notice});
-    await refresh();feedback.textContent='Datos del taller guardados correctamente.';
+    await refresh();feedback.textContent='Datos del taller guardados correctamente.';notify('Datos del taller actualizados correctamente.');
   }catch(error){feedback.textContent=error.message;}finally{button.disabled=false;}
 };
 $('#overviewSimulate').onclick=()=>{selected=null;showView('inbox');render();$('#text').focus();};
@@ -302,3 +303,14 @@ $('#togglePassword').onclick=()=>{
   $('#togglePassword').setAttribute('aria-label',visible?'Ocultar contraseña':'Mostrar contraseña');
 };
 showView(views.includes(location.hash.slice(1))?location.hash.slice(1):'overview');
+
+/* Feedback coherente con el design system. */
+let toastTimeout;
+function notify(message,type='success'){
+  const el=$('#appToast');if(!el)return;
+  el.textContent=message;
+  el.dataset.type=type;
+  el.hidden=false;
+  if(toastTimeout)clearTimeout(toastTimeout);
+  toastTimeout=setTimeout(()=>{el.hidden=true;},3700);
+}
