@@ -55,7 +55,7 @@ test('turnos tienen prioridad sobre cotizaciones y no se confirman automáticame
 });
 test('comentarios de Instagram se derivan a moderación y no generan respuestas públicas',async()=>{
  const r=await respond({text:'Precio para mi Toyota',config,serviceId:'demo',vehicle,conversation:{state:'ia',channel:'instagram_comentario',messages:[]}});
- assert.equal(r.state,'revision');assert.equal(r.reply,null);assert.match(r.reason,/Comentario de Instagram/);
+ assert.equal(r.state,'revision');assert.equal(r.reply,null);assert.match(r.reason,/Comentario público de Instagram/);
  const e=metaEvents({entry:[{changes:[{field:'comments',value:{id:'comment42',text:'Cuánto cuesta?',from:{id:'cliente42'}}}]}]});
  assert.equal(e.length,1);assert.equal(e[0].channel,'instagram_comentario');assert.equal(e[0].id,'ig-comment:comment42');
 });
