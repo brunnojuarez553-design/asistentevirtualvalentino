@@ -17,6 +17,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     new PanelAuth({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,secretKey:env.SUPABASE_SERVICE_ROLE_KEY}):null;
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
+  const loginAttempts=new Map();
   const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
   let queue=Promise.resolve();
   const mutate=fn=>{const next=queue.then(async()=>{const data=await store.load();data.config ||= structuredClone(defaults);const result=await fn(data);await store.save(data);return result;});queue=next.catch(()=>{});return next;};
