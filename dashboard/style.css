@@ -61,3 +61,24 @@ header h1{letter-spacing:.04em}
 .upload-row input[type=file]{margin-bottom:0;font-size:11px}
 .upload-row button{margin-top:12px}
 .upload-row img{width:96px;height:70px;object-fit:cover;border-radius:8px}
+
+
+/* Acceso privado: ocultar el panel hasta autenticación; sin contraseña precargada. */
+body.login-required{display:block;background:#090a0d;min-height:100vh}
+body.login-required aside,body.login-required main{display:none}
+.login-screen[hidden]{display:none!important}
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 75% 20%,#35151b 0%,transparent 42%),#090a0d;padding:26px}
+.login-card{width:100%;max-width:460px;border:1px solid #3f3136;border-radius:19px;
+  background:#16171b;box-shadow:0 30px 90px rgba(0,0,0,.35);padding:40px}
+.login-brand-mark{display:flex;align-items:center;justify-content:center;width:56px;height:56px;
+  background:#e8000f;border-radius:14px;color:white;font:44px 'Bebas Neue',Impact,sans-serif;margin-bottom:24px}
+.login-card h1{margin:12px 0;font-size:40px}
+.login-card .muted{font-size:13px;line-height:1.6;margin-bottom:27px}
+.login-form{padding:0;border:0}
+.login-form label{font-size:12px;font-weight:600;display:block}
+.login-form input{margin-bottom:18px;font-size:15px;padding:13px 14px}
+.login-form .primary{width:100%;font-size:14px;padding:14px}
+#loginError{font-size:12px;color:#ff989e;min-height:16px;margin:0 0 12px}
+.login-card>small{font-size:11px;line-height:1.6;display:block;margin-top:20px}
+@media(max-width:540px){.login-card{padding:26px}.login-card h1{font-size:33px}}
