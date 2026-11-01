@@ -350,3 +350,7 @@ main{padding:17px 16px 25px}
 .activity-empty strong{font-size:13px}
 .activity-empty p{font-size:12px;margin:12px 0 17px;line-height:1.7}
 @media(max-width:760px){.app-toast{right:14px;bottom:14px}}
+
+/* Las fichas sin foto usan exactamente el mismo avatar/logo de la web oficial. */
+.catalog-entry .official-service-placeholder{width:52px!important;height:52px!important;object-fit:cover;border-radius:50%!important;border:1px solid rgba(232,0,15,.33);margin:2px 6px;flex:none;background:#181a20}
+@media(max-width:760px){.brand-copy strong{font-size:14px}.brand-copy small{font-size:8px}}
