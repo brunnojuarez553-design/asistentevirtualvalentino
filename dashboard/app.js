@@ -42,14 +42,14 @@ const serviceFields={
 };
 function serviceStatus(s) {
   if(!s.active)return 'Archivado';
-  if(s.approved)return 'Aprobado para IA';
+  if(s.approved)return s.needs_technical_review||s.needs_legal_review?'Texto aprobado · revisión técnica/legal pendiente':'Texto comercial aprobado';
   return 'Pendiente de aprobación';
 }
 function renderCatalog(){
   if(!Array.isArray(catalogServices))return;
   const active=catalogServices.filter(s=>s.active);
   $('#catalogTotal').textContent=active.length+' servicios activos';
-  $('#catalogEnabled').textContent=active.filter(s=>s.approved).length+' habilitados para IA';
+  $('#catalogEnabled').textContent=active.filter(s=>s.approved).length+' textos aprobados';
   $('#catalogDraft').textContent=catalogServices.filter(s=>!s.approved&&s.active).length+' pendientes';
   const q=($('#serviceSearch').value||'').trim().toLocaleLowerCase('es');
   const list=$('#serviceCards');list.replaceChildren();
