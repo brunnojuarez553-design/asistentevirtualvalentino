@@ -34,7 +34,7 @@ test('Groq recibe el estilo guardado, el historial y contexto comercial sin reve
    {role:'cliente',text:'Tengo un Corolla 2025'},
    {role:'asistente',text:'Saludos, ¿en qué le ayudamos?'},
    {role:'cliente',text:'¿Cuánto vale el servicio?'}],
-   tone:{greeting:'Saludos, con gusto le ayudamos.',style:'Tratamiento de usted y español venezolano',
+   tone:{greeting:'Saludos, con gusto le ayudamos.',style:'Trato de tú y te con español venezolano',
      examples:['Saludos, buen día. ¿En qué podemos ayudarle?']},
    business:{location:'Catia La Mar',hours:'L-V 7:30 a 12:00'},
    services:[],catalog:[{name:'EGR Toyota',approved:false,referencePriceUsd:665}],
@@ -43,10 +43,24 @@ test('Groq recibe el estilo guardado, el historial y contexto comercial sin reve
  const body=JSON.parse(request.body);
  assert.equal(body.messages.at(-1).content,'¿Cuánto vale el servicio?');
  assert.equal(body.messages.at(-2).role,'assistant');
- assert.match(body.messages[0].content,/Tratamiento de usted/);
+ assert.match(body.messages[0].content,/Trato de tú y te/);
  assert.match(body.messages[0].content,/Catia La Mar/);
  assert.match(body.messages[0].content,/NOMBRES INTERNOS PENDIENTES/);
  assert.doesNotMatch(body.messages[0].content,/665/);
  assert.doesNotMatch(request.body,/private-key-test/);
  assert.match(body.messages[0].content,/sin repetir saludo/);
+});
+
+test('la IA recibe solo copy comercial cuando revisión técnica/legal continúa pendiente',async()=>{
+ let request;
+ const p=createProvider({AI_ENABLED:'true',AI_PROVIDER:'groq',GROQ_API_KEY:'fake-secret',GROQ_MODEL:'test-model'},
+ async(url,options)=>{request=options;return {ok:true,json:async()=>({choices:[{message:{content:'Con gusto te ayudamos, ¿nos confirmas el motor?'}}]})};});
+ const service={name:'Blindaje Toyota',description:'Procedimiento sin validación',publicCopy:'Te orientamos para confirmar la motorización.',approved:true,
+  needs_technical_review:true,needs_legal_review:true,referencePriceUsd:665,active:true};
+ await p.draft({text:'¿cuánto sale?',history:[],tone:{style:'Tú y te'},business:{},services:[service],catalog:[service]});
+ const prompt=JSON.parse(request.body).messages[0].content;
+ assert.match(prompt,/Te orientamos para confirmar la motorización/);
+ assert.doesNotMatch(prompt,/Procedimiento sin validación|665/);
+ assert.match(prompt,/pendiente: no confirmar compatibilidad/);
+ assert.match(prompt,/NO uses voseo/);
 });
