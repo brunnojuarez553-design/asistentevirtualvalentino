@@ -90,4 +90,42 @@
     </section>
   </div>
 </section>
-<section id="config" hidden class="panel settings"><p class="eyebrow">CONOCIMIENTO DEL NEGOCIO</p><h2>Catálogo y forma de responder</h2><p>Se cargaron referencias que proporcionó Valentino, pendientes de confirmación de vigencia, motor y aplicación legal. Editá el saludo, estilo, ejemplos y servicios. Marcá como aprobado solo lo revisado por Valentino. Los servicios ahora se administran desde la sección Servicios. El editor de abajo sirve únicamente para el tono, horarios y reglas generales.</p><p>Las cotizaciones automáticas requieren una regla aprobada con coincidencia exacta de marca, modelo, año y motor. Los precios orientativos del catálogo no son suficientes.</p><label>Configuración<textarea id="configJson" spellcheck="false"></textarea></label><button id="saveConfig" class="primary">Guardar configuración</button><p id="saved" role="status"></p></section><footer>VALENTINO MOTORS <span>Asistente en preparación · Sin n8n</span></footer></main></body></html>
+<section id="config" class="view-section" hidden>
+<div class="section-heading"><div><p class="eyebrow"><span class="accent-bar"></span> INTELIGENCIA / REGLAS DE ATENCIÓN</p><h2>CONFIGURACIÓN <span class="soft-accent">DE IA.</span></h2><p class="muted">Definí cómo responde el asistente. Toda modificación permanece en el entorno de simulación hasta habilitar Meta.</p></div><span class="mini-pill">SIN ENVÍOS EXTERNOS</span></div>
+<div class="settings-grid"><div class="panel settings-card"><div class="panelhead"><div><p class="eyebrow">01 / IDENTIDAD VERBAL</p><h3>Personalidad y conversación</h3></div><svg class="ico"><use href="#i-cpu"/></svg></div>
+<form id="toneForm" class="designer-form">
+<label>Saludo inicial<input id="toneGreeting" maxlength="240" required placeholder="Saludos, con gusto le ayudamos."></label>
+<label>Estilo de comunicación<textarea id="toneStyle" required maxlength="3500" rows="5" placeholder="Español venezolano, tono respetuoso y natural..."></textarea></label>
+<label>Ejemplos de respuestas <small>(una por línea)</small><textarea id="toneExamples" maxlength="5000" rows="6" placeholder="Saludos, ¿cómo podemos ayudarle?"></textarea></label>
+<button type="submit" class="primary"><svg class="ico"><use href="#i-shield"/></svg> Guardar configuración</button><p id="toneSaved" class="form-status" role="status" aria-live="polite"></p></form></div>
+<div class="settings-stack"><article class="panel rule-card"><div class="rule-icon"><svg class="ico"><use href="#i-shield"/></svg></div><div><p class="eyebrow">02 / CONTROLES</p><h3>Turnos con supervisión humana</h3><p>Ninguna IA puede reservar o confirmar fechas. Valentino revisa cada solicitud y define la disponibilidad.</p><span class="rule-locked">REGLA PROTEGIDA</span></div></article>
+<article class="panel rule-card"><div class="rule-icon"><svg class="ico"><use href="#i-layers"/></svg></div><div><p class="eyebrow">03 / BASE DE CONOCIMIENTO</p><h3>Servicios aprobados</h3><p>Solo el contenido revisado se usa para orientar consultas. Los precios internos no se publican automáticamente.</p><button type="button" class="ghost-btn" data-go="catalog">Administrar servicios <svg class="ico"><use href="#i-arrow"/></svg></button></div></article>
+<article class="panel rule-card"><div class="rule-icon"><svg class="ico"><use href="#i-chat"/></svg></div><div><p class="eyebrow">04 / ESCALAMIENTO</p><h3>Atención humana prioritaria</h3><p>Reclamos, fallas de seguridad, presupuestos no aprobados y turnos pasan a revisión.</p><span class="rule-locked">REGLA PROTEGIDA</span></div></article></div></div>
+</section>
+
+<section id="onboarding" class="view-section" hidden>
+<div class="section-heading"><div><p class="eyebrow"><span class="accent-bar"></span> RELEVAMIENTO / ONBOARDING</p><h2>CONOCIMIENTO <span class="soft-accent">DEL TALLER.</span></h2><p class="muted">Una experiencia guiada para mantener actualizados los datos que usa el asistente.</p></div></div>
+<div class="onboarding-shell panel"><div class="onboarding-progress"><div class="step-label"><span id="onboardingStepLabel">PASO 01 / 03</span><span id="onboardingProgressText">33 % completado</span></div><div class="progress-track"><span id="onboardingProgress"></span></div><div class="step-names"><span>Identidad</span><span>Atención</span><span>Revisión</span></div></div>
+<form id="onboardingForm" class="onboarding-form">
+<fieldset data-step="0" class="onboarding-step"><legend>Información del negocio</legend><p class="muted">Lo que Valentino quiere que sus clientes sepan de su taller.</p>
+<label>Nombre comercial<input id="obName" value="Valentino Motors LG" maxlength="140" required></label>
+<label>Dirección / ubicación<textarea id="obLocation" maxlength="1000" rows="3" required></textarea></label></fieldset>
+<fieldset data-step="1" class="onboarding-step" hidden><legend>Atención y derivación</legend><p class="muted">Horarios, turnos y casos que requieren intervención de una persona.</p>
+<label>Horarios de atención<textarea id="obHours" maxlength="1000" rows="3" required></textarea></label>
+<label>Política de turnos<textarea id="obBooking" maxlength="1500" rows="3" required></textarea></label>
+<label>Cuándo derivar a Valentino<textarea id="obHandoff" maxlength="1500" rows="3" required></textarea></label></fieldset>
+<fieldset data-step="2" class="onboarding-step" hidden><legend>Revisar y guardar</legend><p class="muted">Los cambios se guardan de manera segura en el conocimiento del negocio. El asistente seguirá en modo simulación.</p>
+<div class="review-lines" id="onboardingReview"></div></fieldset>
+<div class="onboarding-actions"><button type="button" class="ghost-btn" id="obBack">Anterior</button><button type="button" class="primary" id="obNext">Continuar <svg class="ico"><use href="#i-arrow"/></svg></button><button type="submit" class="primary" id="obSave" hidden>Guardar datos del taller</button></div>
+<p id="obFeedback" class="form-status" role="status" aria-live="polite"></p>
+</form></div></section>
+
+<section id="channels" class="view-section" hidden>
+<div class="section-heading"><div><p class="eyebrow"><span class="accent-bar"></span> INTEGRACIONES / ESTADO</p><h2>CANALIZACIÓN <span class="soft-accent">INTELIGENTE.</span></h2><p class="muted">Estado de los canales oficiales. Ninguna conexión con clientes está activada.</p></div><span class="mini-pill">PENDIENTE DE META</span></div>
+<div class="channel-grid">
+<article class="panel channel-card"><div class="channel-icon"><svg class="ico"><use href="#i-chat"/></svg></div><span class="channel-state">SIN CONECTAR</span><h3>WhatsApp Business</h3><p>Responder automáticamente desde el número actual de Valentino, conservando la aplicación mediante la coexistencia oficial de Meta.</p><div class="channel-rule"><svg class="ico"><use href="#i-shield"/></svg><span>Coexistencia obligatoria · sin migración de número</span></div></article>
+<article class="panel channel-card"><div class="channel-icon"><svg class="ico"><use href="#i-chat"/></svg></div><span class="channel-state">SIN CONECTAR</span><h3>Instagram · Mensajes</h3><p>Atención de consultas por DM, información comercial y derivación humana con permisos oficiales.</p><div class="channel-rule"><svg class="ico"><use href="#i-shield"/></svg><span>Requiere autorización oficial de la cuenta</span></div></article>
+<article class="panel channel-card"><div class="channel-icon"><svg class="ico"><use href="#i-chat"/></svg></div><span class="channel-state">SIN CONECTAR</span><h3>Instagram · Comentarios</h3><p>Detección de preguntas en publicaciones y preparación de respuestas revisadas antes de publicar.</p><div class="channel-rule"><svg class="ico"><use href="#i-shield"/></svg><span>Moderación humana inicial habilitada</span></div></article></div>
+<div class="channel-footer panel"><svg class="ico"><use href="#i-bell"/></svg><div><h3>Activación controlada</h3><p>El sistema está listo para demostraciones del panel. Los envíos automáticos requieren completar la configuración oficial de Meta, las pruebas y la autorización de Valentino.</p></div></div>
+</section>
+<footer>VALENTINO MOTORS <span>Asistente en preparación · Sin n8n</span></footer></main></body></html>
