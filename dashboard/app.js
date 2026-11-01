@@ -176,3 +176,129 @@ $('#loginForm').onsubmit=async event=>{
   }catch(error){token='';showLogin(true);$('#loginError').textContent=error.message;}
   finally{submit.disabled=false;}
 };
+
+
+/* Navegación, indicadores y onboarding V1 */
+const views=['overview','inbox','catalog','config','onboarding','channels'];
+function showView(view){
+  const v=views.includes(view)?view:'overview';activeView=v;
+  views.forEach(name=>{const section=document.getElementById(name);if(section)section.hidden=name!==v;});
+  document.querySelectorAll('[data-view]').forEach(b=>{
+    const selected=b.dataset.view===v;
+    b.classList.toggle('active',selected);
+    if(selected)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+  });
+  document.body.classList.remove('nav-open');
+  const menu=$('#mobileMenu');if(menu)menu.setAttribute('aria-expanded','false');
+  history.replaceState(null,'',location.pathname+location.search+'#'+v);
+  if(v==='onboarding')updateOnboardingStep();
+  window.scrollTo({top:0,behavior:'instant'});
+}
+function renderOverview(){
+  if(!data)return;
+  const conversations=data.conversations||[];
+  const services=catalogServices||[];
+  $('#overviewConversations').textContent=conversations.length;
+  $('#overviewPending').textContent=conversations.filter(c=>c.state==='revision'||c.state==='humano').length;
+  $('#overviewServices').textContent=services.filter(s=>s.active).length;
+  $('#overviewApproved').textContent=services.filter(s=>s.active&&s.approved).length;
+  const recent=$('#overviewActivity');recent.replaceChildren();
+  if(!conversations.length){
+    const wrap=node('div','','activity-empty');
+    const lead=node('strong','Todavía no hay interacciones registradas.');
+    const p=node('p','Usá el simulador para probar el recorrido de consultas y derivación humana.','muted');
+    const btn=node('button','Abrir simulador','ghost-btn');btn.type='button';
+    btn.onclick=()=>showView('inbox');
+    wrap.append(lead,p,btn);recent.append(wrap);
+  }else{
+    for(const c of conversations.slice(0,5)){
+      const entry=node('button','','activity-item activity-action');entry.type='button';
+      const left=node('span','','activity-details');
+      left.append(node('strong',c.contact||'Contacto de prueba'),node('small',(channelLabels[c.channel]||c.channel||'Simulador')+' · '+(c.messages?.at(-1)?.text||'Sin mensajes').slice(0,95)));
+      entry.append(left,node('span',labels[c.state]||c.state||'IA','activity-status'));
+      entry.onclick=()=>{selected=c.id;showView('inbox');render();};
+      recent.append(entry);
+    }
+  }
+}
+function syncSettings(){
+  if(!data?.config)return;
+  const t=data.config.tone||{},b=data.config.business||{};
+  if(!$('#toneForm').contains(document.activeElement)){
+    $('#toneGreeting').value=t.greeting||'';
+    $('#toneStyle').value=t.style||'';
+    $('#toneExamples').value=Array.isArray(t.examples)?t.examples.join('\n'):'';
+  }
+  if(!$('#onboardingForm').contains(document.activeElement)){
+    $('#obName').value=b.name||'Valentino Motors LG';
+    $('#obLocation').value=b.location||'';
+    $('#obHours').value=b.hours||'';
+    $('#obBooking').value=b.booking||'Valentino confirma cada solicitud de turno personalmente.';
+    $('#obHandoff').value=b.humanHandoff||'';
+  }
+}
+$('#toneForm').onsubmit=async e=>{
+  e.preventDefault();const btn=e.submitter;btn.disabled=true;
+  const feedback=$('#toneSaved');feedback.textContent='Guardando configuración...';
+  try{
+    const tone={...data.config.tone,greeting:$('#toneGreeting').value.trim(),style:$('#toneStyle').value.trim(),
+      examples:$('#toneExamples').value.split(/\r?\n/).map(t=>t.trim()).filter(Boolean).slice(0,30)};
+    if(!tone.greeting||!tone.style)throw Error('Completá el saludo y el estilo de comunicación.');
+    await api('config',{tone,business:data.config.business,notice:data.config.notice});
+    await refresh();feedback.textContent='Configuración guardada correctamente.';
+  }catch(error){feedback.textContent=error.message;}finally{btn.disabled=false;}
+};
+function updateOnboardingStep(){
+  document.querySelectorAll('.onboarding-step').forEach(e=>e.hidden=Number(e.dataset.step)!==onboardingStep);
+  $('#onboardingStepLabel').textContent='PASO 0'+(onboardingStep+1)+' / 03';
+  $('#onboardingProgressText').textContent=Math.round((onboardingStep+1)/3*100)+' % completado';
+  $('#onboardingProgress').style.width=((onboardingStep+1)/3*100)+'%';
+  $('#obBack').hidden=onboardingStep===0;
+  $('#obNext').hidden=onboardingStep===2;
+  $('#obSave').hidden=onboardingStep!==2;
+  $('#obFeedback').textContent='';
+  if(onboardingStep===2){
+    const lines=$('#onboardingReview');lines.replaceChildren();
+    for(const [label,id] of [
+      ['NOMBRE COMERCIAL','obName'],['UBICACIÓN','obLocation'],['HORARIOS','obHours'],
+      ['TURNOS','obBooking'],['DERIVACIÓN A HUMANO','obHandoff']
+    ]){
+      const box=node('div','');box.append(node('strong',label),node('span',$('#'+id).value||'Pendiente de completar'));lines.append(box);
+    }
+  }
+}
+$('#obNext').onclick=()=>{
+  const step=document.querySelector('.onboarding-step[data-step="'+onboardingStep+'"]');
+  const fields=[...step.querySelectorAll('input,textarea')];
+  const invalid=fields.find(f=>!f.checkValidity());
+  if(invalid){invalid.reportValidity();return;}
+  onboardingStep=Math.min(2,onboardingStep+1);updateOnboardingStep();
+};
+$('#obBack').onclick=()=>{onboardingStep=Math.max(0,onboardingStep-1);updateOnboardingStep();};
+$('#onboardingForm').onsubmit=async e=>{
+  e.preventDefault();if(onboardingStep!==2)return;
+  const button=$('#obSave');button.disabled=true;
+  const feedback=$('#obFeedback');feedback.textContent='Guardando datos del taller...';
+  try{
+    const business={...data.config.business,name:$('#obName').value.trim(),location:$('#obLocation').value.trim(),
+      hours:$('#obHours').value.trim(),booking:$('#obBooking').value.trim(),
+      humanHandoff:$('#obHandoff').value.trim()};
+    if(Object.values(business).some(value=>typeof value==='string'&&!value.trim()))
+      throw Error('Completá todos los datos del relevamiento.');
+    await api('config',{tone:data.config.tone,business,notice:data.config.notice});
+    await refresh();feedback.textContent='Datos del taller guardados correctamente.';
+  }catch(error){feedback.textContent=error.message;}finally{button.disabled=false;}
+};
+$('#overviewSimulate').onclick=()=>{selected=null;showView('inbox');render();$('#text').focus();};
+$('#overviewAll').onclick=()=>showView('inbox');
+$('#mobileMenu').onclick=()=>{
+  const open=document.body.classList.toggle('nav-open');
+  $('#mobileMenu').setAttribute('aria-expanded',String(open));
+};
+$('#togglePassword').onclick=()=>{
+  const input=$('#loginPassword');const visible=input.type==='password';
+  input.type=visible?'text':'password';
+  $('#togglePassword').textContent=visible?'Ocultar':'Ver';
+  $('#togglePassword').setAttribute('aria-label',visible?'Ocultar contraseña':'Mostrar contraseña');
+};
+showView(views.includes(location.hash.slice(1))?location.hash.slice(1):'overview');
