@@ -50,7 +50,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
     c.messages.push({id,role:'cliente',text,at:new Date().toISOString()});
     const result=await respond({text,conversation:c,config:await engineConfig(d),vehicle,serviceId,provider});
-    c.state=result.state;c.draft=result.draft||c.draft||null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
+    c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
     d.events.push(id);audit(d,'mensaje_recibido',c.id);return c;
@@ -115,6 +115,11 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
       }
+      if(url.pathname==='/api/ai/status'&&req.method==='GET'){
+        return send(200,{enabled:!!provider,provider:provider?(env.AI_PROVIDER||'openai'):null,
+          model:provider?(env.AI_PROVIDER==='groq'?env.GROQ_MODEL:env.OPENAI_MODEL):null,
+          outbound:false,mode:'simulation'});
+      }
       if(url.pathname==='/api/services' && req.method==='GET'){
         await queue;const d=await store.load();return send(200,{services:await serviceRows(d)});
       }
@@ -146,6 +151,26 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         }
         const service=catalog?await catalog.save(body):await mutate(d=>localServiceSave(d,body));
         return send(200,{service});
+      }
+      if(url.pathname==='/api/ai/draft'){
+        if(!provider)return send(503,{error:'Groq todavía no está configurado en Vercel. Cargá la API key y activá AI_ENABLED=true.'});
+        if(typeof body.id!=='string'||body.id.length>100)return send(400,{error:'Seleccioná una conversación de prueba'});
+        return send(200,await mutate(async d=>{
+          const conversation=d.conversations.find(c=>c.id===body.id);
+          if(!conversation)throw Object.assign(Error('Conversación inexistente'),{status:404});
+          const customer=[...conversation.messages].reverse().find(m=>m.role==='cliente');
+          if(!customer)throw Object.assign(Error('No hay mensaje de cliente para redactar'),{status:400});
+          const cfg=await engineConfig(d);
+          const reply=await provider.draft({text:customer.text,history:conversation.messages||[],tone:cfg.tone,business:cfg.business,
+            services:cfg.services.filter(s=>s.approved===true),
+            catalog:cfg.services,firstReply:!conversation.messages.some(m=>m.role==='asistente'||m.role==='equipo'),
+            kind:/precio|cu[aá]nto|cotiza|presupuesto|costo|valor/i.test(customer.text)?'price':'general',
+            channel:conversation.channel,vehicle:conversation.vehicle||{}});
+          conversation.draft=String(reply).slice(0,3000);
+          audit(d,'borrador_groq_manual',conversation.id);
+          // No añade mensaje como enviado y no cambia el estado humano o en revisión.
+          return {draft:conversation.draft,state:conversation.state,outbound:false};
+        }));
       }
       if(url.pathname==='/api/simulate'){
         if(typeof body.text!=='string'||!body.text.trim()||body.text.length>4000||body.contact?.length>120)return send(400,{error:'Ingresá un mensaje de hasta 4000 caracteres'});
