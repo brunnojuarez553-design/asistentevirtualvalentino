@@ -17,7 +17,7 @@ test('consulta de precio recibe orientación útil, turno pasa a revisión y rec
  const price=await run('cuánto cuesta');assert.equal(price.state,'ia');
  assert.match(price.reply,/motor tiene tu vehículo/);assert.doesNotMatch(price.reply,/USD|\\$100/);
  const booking=await run('quiero un turno');assert.equal(booking.state,'revision');
- assert.match(booking.reply,/Valentino te confirmará personalmente/);
+ assert.match(booking.reply,/Valentino te confirma personalmente/);
  assert.equal((await run('reclamo por garantía')).state,'humano');
 });
 test('modo humano no responde y Groq simula respuesta normal en el chat',async()=>{
@@ -96,7 +96,7 @@ test('una falla de Groq no deja al cliente sin respuesta y no revela precios',as
  const result=await respond({text:'¿Cuánto cuesta la entonación?',config,
    conversation:{state:'ia',channel:'whatsapp',messages:[]},
    provider:{draft:async()=>{throw Error('secret token should not be revealed');}}});
- assert.equal(result.state,'ia');assert.match(result.reply,/motorización exacta/);
+ assert.equal(result.state,'ia');assert.match(result.reply,/motor tiene tu vehículo/);
  assert.doesNotMatch(result.reply,/secret token/);
 });
 
