@@ -61,6 +61,32 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
     try {
       if(url.pathname==='/health')return send(200,{ok:true,mode:'simulation',outbound:false});
+      if(url.pathname==='/auth/mode' && req.method==='GET')return send(200,{mode:authMode});
+      if(url.pathname==='/auth/login' && req.method==='POST'){
+        if(!panelAuth)return send(404,{error:'Acceso con cuenta desactivado en entorno local'});
+        const ip=req.socket.remoteAddress||'unknown';
+        const now=Date.now();
+        for(const [key,value] of loginAttempts)if(now-value.since>900000)loginAttempts.delete(key);
+        const attempt=loginAttempts.get(ip);
+        if(attempt?.count>=6)return send(429,{error:'Demasiados intentos. Probá más tarde.'});
+        let raw='';
+        for await(const chunk of req){
+          raw+=chunk;
+          if(Buffer.byteLength(raw)>2048)return send(413,{error:'Solicitud demasiado grande'});
+        }
+        let body;try{body=JSON.parse(raw)}catch{return send(400,{error:'Solicitud inválida'})}
+        try{
+          const session=await panelAuth.signIn(body?.email,body?.password);
+          loginAttempts.delete(ip);
+          return send(200,session);
+        }catch(error){
+          if(error.status===401){
+            const old=loginAttempts.get(ip);
+            loginAttempts.set(ip,old?{count:old.count+1,since:old.since}:{count:1,since:now});
+          }
+          return send(error.status||503,{error:error.status?error.message:'No se pudo verificar la cuenta'});
+        }
+      }
       if(url.pathname==='/webhooks/meta' && req.method==='GET'){
         if(env.META_WEBHOOKS_ENABLED!=='true')return send(503,{error:'Webhooks desactivados'});
         if(url.searchParams.get('hub.mode')!=='subscribe'||!same(url.searchParams.get('hub.verify_token'),env.META_VERIFY_TOKEN))return send(403,{error:'Verificación inválida'});
