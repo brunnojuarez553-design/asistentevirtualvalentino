@@ -99,3 +99,44 @@ test('una falla de Groq no deja al cliente sin respuesta y no revela precios',as
  assert.equal(result.state,'ia');assert.match(result.reply,/motorización exacta/);
  assert.doesNotMatch(result.reply,/secret token/);
 });
+
+test('bloquea una cotización monetaria inventada por Groq sin reglas aprobadas',async()=>{
+ const response=await respond({text:'¿Cuánto cuesta la eliminación de EGR?',config,
+  conversation:{state:'ia',messages:[],channel:'whatsapp'},
+  provider:{draft:async()=> 'Cuesta USD 750 y tiene garantía de 3 años.'}});
+ assert.equal(response.state,'ia');
+ assert.match(response.reply,/motorización exacta/);
+ assert.doesNotMatch(response.reply,/750|USD|3 años/);
+ assert.match(response.reason,/bloqueó un importe/);
+});
+test('estado de Groq no revela secretos ni activa envíos reales',async t=>{
+ let state={config:null,conversations:[],alerts:[],audit:[],events:[]};
+ const store={load:async()=>structuredClone(state),save:async data=>{state=structuredClone(data)}};
+ const app=await createApp({DASHBOARD_TOKEN:'test',AI_ENABLED:'true',AI_PROVIDER:'groq',
+   GROQ_API_KEY:'super-private-test-key',GROQ_MODEL:'llama-3.3-70b-versatile'},store);
+ await new Promise(r=>app.listen(0,'127.0.0.1',r));
+ t.after(()=>new Promise(r=>app.close(r)));
+ const root='http://127.0.0.1:'+app.address().port;
+ assert.equal((await fetch(root+'/api/ai/status')).status,401);
+ const response=await fetch(root+'/api/ai/status',{headers:{Authorization:'Bearer test'}});
+ assert.equal(response.status,200);
+ const status=await response.json();
+ assert.equal(status.enabled,true);
+ assert.equal(status.provider,'groq');
+ assert.equal(status.model,'llama-3.3-70b-versatile');
+ assert.equal(status.outbound,false);
+ assert.ok(!JSON.stringify(status).includes('super-private-test-key'));
+});
+test('sin Groq no ofrece borrador en línea ni envía mensajes',async t=>{
+ let state={config:null,conversations:[],alerts:[],audit:[],events:[]};
+ const store={load:async()=>structuredClone(state),save:async data=>{state=structuredClone(data)}};
+ const app=await createApp({DASHBOARD_TOKEN:'test'},store);
+ await new Promise(r=>app.listen(0,'127.0.0.1',r));
+ t.after(()=>new Promise(r=>app.close(r)));
+ const response=await fetch('http://127.0.0.1:'+app.address().port+'/api/ai/draft',{
+  method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},
+  body:JSON.stringify({id:'conversation-not-found'})});
+ assert.equal(response.status,503);
+ assert.match((await response.json()).error,/Groq/);
+ assert.equal(state.conversations.length,0);
+});
