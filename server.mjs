@@ -1,4 +1,7 @@
 import http from 'node:http';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {TenantDirectory,businessDefaults} from './lib/tenants.mjs';
+import {GoogleCalendar,googleCookie} from './lib/google-calendar.mjs';
 import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -16,7 +19,7 @@ import {PanelAuth} from './lib/panel-auth.mjs';
 import {readBody,requireRawWebhook} from './lib/http-body.mjs';
 import {MetaReview} from './lib/meta-review.mjs';
 
-export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher}={}) {
+export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher,tenantDirectory,storeFactory,googleFetcher}={}) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
   const authMode=env.AUTH_MODE || (env.NODE_ENV==='production'?'supabase':'token');
   if(env.NODE_ENV==='production' && (authMode!=='supabase'||env.STORAGE!=='supabase'))throw Error('Production requires Supabase Auth and Supabase storage');
@@ -25,41 +28,62 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
   const metaReview=new MetaReview(env,{fetcher:metaReviewFetcher});
-  const normalizedWriter=env.NORMALIZED_WRITE_ENABLED==='true'?new NormalizedWriter({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
-  const normalizedInbox=env.NORMALIZED_INBOX_ENABLED==='true'?new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
+  const baseNormalizedWriter=env.NORMALIZED_WRITE_ENABLED==='true'?new NormalizedWriter({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
+  const baseNormalizedInbox=env.NORMALIZED_INBOX_ENABLED==='true'?new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const loginAttempts=new Map();
-  const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
-  let queue=Promise.resolve();
+  const baseCatalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
+  const directory=tenantDirectory||(env.STORAGE==='supabase'?new TenantDirectory(env):null);
+  const googleCalendar=new GoogleCalendar(env,directory,{fetcher:googleFetcher});
+  const requestScope=new AsyncLocalStorage();
+  const scope=()=>requestScope.getStore()||{};
+  const activeStore=()=>scope().store||store;
+  const getCatalog=()=>scope().catalog??baseCatalog;
+  const getDefaults=()=>businessDefaults(scope().business,defaults);
+  const getWriter=()=>scope().writer??baseNormalizedWriter;
+  const getInbox=()=>scope().inbox??baseNormalizedInbox;
+  const queues=new Map();
+  const queueKey=()=>scope().business?.id||'local';
+  const currentQueue=()=>queues.get(queueKey())||Promise.resolve();
+  const selectBusiness=business=>{
+    const context=directory.context(business);
+    if(storeFactory)context.store=storeFactory(business);
+    if(env.NORMALIZED_WRITE_ENABLED==='true')context.writer=new NormalizedWriter({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:business.id});
+    if(env.NORMALIZED_INBOX_ENABLED==='true')context.inbox=new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:business.id});
+    Object.assign(scope(),context);
+  };
   // CAS prevents two Vercel instances from overwriting each other's workspace updates.
   // Retries re-evaluate the mutation against the latest snapshot, including duplicate-event checks.
   const mutate=fn=>{
-    const next=queue.then(async()=>{
+    const key=queueKey();
+    const next=currentQueue().then(async()=>{
       for(let attempt=0;attempt<5;attempt++){
-        const snapshot=typeof store.loadSnapshot==='function'?await store.loadSnapshot():{data:await store.load(),version:null};
+        const snapshot=typeof activeStore().loadSnapshot==='function'?await activeStore().loadSnapshot():{data:await activeStore().load(),version:null};
         const data=snapshot.data;
-        data.config ||= structuredClone(defaults);
+        data.config ||= getDefaults();
         const result=await fn(data);
-        const saved=typeof store.saveConditional==='function'
-          ?await store.saveConditional(data,snapshot.version)
-          :(await store.save(data),true);
+        const saved=typeof activeStore().saveConditional==='function'
+          ?await activeStore().saveConditional(data,snapshot.version)
+          :(await activeStore().save(data),true);
         if(saved){
           // Mirror only after the authoritative workspace commit. Failures are visible,
           // never falsely treated as successful; replay is idempotent by message UUID.
-          if(normalizedWriter){try{await reconcileNormalized(normalizedWriter,data.conversations||[]);}catch(error){console.error('Normalized sync pending:',error.message);}}
+          if(getWriter()){try{await reconcileNormalized(getWriter(),data.conversations||[]);}catch(error){console.error('Normalized sync pending:',error.message);}}
           return result;
         }
       }
       throw Object.assign(Error('Workspace busy; retry the request'),{status:409});
     });
-    queue=next.catch(()=>{});
+    queues.set(key,next.catch(()=>{}));
+    next.finally(()=>{if(queues.get(key)===settled)queues.delete(key);}).catch(()=>{});
+    const settled=queues.get(key);
     return next;
   };
   const audit=(d,action,id)=>d.audit.push({id:randomUUID(),at:new Date().toISOString(),action,conversationId:id});
   // Un único catálogo de origen: tablas vm_services en Supabase o workspace local en pruebas.
-  const serviceRows=async d=>catalog?await catalog.list():(d.config?.services||defaults.services).map(fromEngineService);
-  const engineConfig=async d=>({...d.config,services:catalog?await catalog.listForEngine():(await serviceRows(d)).map(toEngineService)});
+  const serviceRows=async d=>getCatalog()?await getCatalog().list():(d.config?.services||getDefaults().services).map(fromEngineService);
+  const engineConfig=async d=>({...d.config,services:getCatalog()?await getCatalog().listForEngine():(await serviceRows(d)).map(toEngineService)});
   const localServiceSave=async (d,body)=>{
-    d.config ||= structuredClone(defaults);
+    d.config ||= getDefaults();
     d.config.services ||= [];
     const list=d.config.services;
     const previous=body.id?list.find(x=>x.id===body.id):null;
@@ -89,7 +113,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     const detected=knownVehicleDetails(text,c.messages||[],vehicle||c.vehicle||{});
     c.vehicle={make:detected.brand,model:detected.model,year:detected.year,engine:detected.engine};
     let mediaAnalysis=null;
-    if(mediaType && mediaId && ['audio','image'].includes(mediaType) && env.MEDIA_ANALYSIS_ENABLED==='true'){
+    if(mediaType && mediaId && ['audio','image'].includes(mediaType) && env.MEDIA_ANALYSIS_ENABLED==='true' && (!scope().business||scope().business.slug==='valentino-motors')){
       try{mediaAnalysis=await analyzeMetaMedia({mediaId,type:mediaType,token:env.META_ACCESS_TOKEN,groqKey:env.GROQ_API_KEY,visionKey:env.OPENAI_API_KEY,visionModel:env.VISION_MODEL});}
       catch(error){console.error('Media review fallback:',error.code||'processing_error');}
     }
@@ -136,6 +160,13 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(url.searchParams.get('hub.mode')!=='subscribe'||!same(url.searchParams.get('hub.verify_token'),env.META_VERIFY_TOKEN))return send(403,{error:'Verificación inválida'});
         const challenge=url.searchParams.get('hub.challenge');if(!challenge||challenge.length>200)return send(400,{error:'Challenge inválido'});res.writeHead(200,{'Content-Type':'text/plain'});return res.end(challenge);
       }
+      if(url.pathname==='/integrations/google/callback'&&req.method==='GET'){
+        const cookie=String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(googleCookie+'='))?.slice(googleCookie.length+1);
+        res.setHeader('Set-Cookie',googleCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
+        try{const business=await googleCalendar.callback(url.searchParams,cookie);res.writeHead(302,{Location:'/dashboard?calendar=connected&business='+encodeURIComponent(business)+'#calendar'});}
+        catch{res.writeHead(302,{Location:'/dashboard?calendar=error#calendar'});}
+        return res.end();
+      }
       if(!url.pathname.startsWith('/api/') && url.pathname!=='/webhooks/meta'){
         if(req.method!=='GET')return send(405,{error:'Método no permitido'});
         if(url.pathname==='/relevamiento'){
@@ -149,9 +180,10 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(panelAuth){
           const authorization=String(req.headers.authorization||'');
           if(!authorization.startsWith('Bearer '))return send(401,{error:'Iniciá sesión para continuar'});
-          req.panelUser=await panelAuth.authenticate(authorization.slice(7));
+          req.panelUser=await panelAuth.authenticate(authorization.slice(7),req.headers['x-business-id']);
+          if(directory){if(!req.panelUser.business)throw Object.assign(Error('No se pudo resolver la empresa autorizada'),{status:403});selectBusiness(req.panelUser.business);}
           if(req.method!=='GET' &&
-             ['/api/services','/api/service-image','/api/config','/api/ai/check','/api/conversation'].includes(url.pathname) &&
+             ['/api/services','/api/service-image','/api/config','/api/ai/check','/api/conversation','/api/simulate','/api/ai/draft'].includes(url.pathname) &&
              !['owner','admin'].includes(req.panelUser.role))
             return send(403,{error:'No tenés permisos para modificar servicios y configuración'});
         }else if(env.DASHBOARD_TOKEN
@@ -162,22 +194,58 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
       }
+      if(url.pathname.startsWith('/api/calendar/')){
+        if(!scope().business||!req.panelUser)throw Object.assign(Error('La agenda requiere una empresa autorizada'),{status:503});
+        const action=url.pathname.slice('/api/calendar/'.length);
+        if(action==='status'&&req.method==='GET')return send(200,await googleCalendar.status(scope().business));
+        if(action==='bookings'&&req.method==='GET')return send(200,{bookings:await googleCalendar.list(req.panelUser.businessId)});
+        if(req.method!=='POST')return send(405,{error:'Método no permitido'});
+        if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'La administración de la agenda requiere propietario o administrador'});
+        let body;try{body=JSON.parse((await readBody(req,4096)).toString('utf8'));}catch{return send(400,{error:'Solicitud inválida'});}
+        if(action==='connect'){
+          const result=await googleCalendar.start(req.panelUser);res.setHeader('Set-Cookie',result.cookie);return send(200,{url:result.url});
+        }
+        if(action==='availability')return send(200,await googleCalendar.availability(scope().business,body));
+        if(action==='book')return send(200,{booking:await googleCalendar.book(req.panelUser,body)});
+        if(action==='reconcile')return send(200,{booking:await googleCalendar.reconcile(req.panelUser,body.id)});
+        if(action==='disconnect'&&body.confirm===true)return send(200,await googleCalendar.disconnect(req.panelUser.businessId));
+        return send(400,{error:'Acción de agenda inválida o sin confirmar'});
+      }
+      if(url.pathname==='/api/team'){
+        if(!scope().business||!req.panelUser)throw Object.assign(Error('Seleccioná una empresa autorizada'),{status:403});
+        const base={p_actor:req.panelUser.id,p_business_id:req.panelUser.businessId};
+        if(req.method==='GET')return send(200,{members:await directory.request('rpc/vm_manage_team',{method:'POST',body:{...base,p_action:'list'}})});
+        if(req.method!=='POST')return send(405,{error:'Método no permitido'});
+        if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'No tenés permisos para administrar el equipo'});
+        let body;try{body=JSON.parse((await readBody(req,2048)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
+        if(!['add','disable'].includes(body.action)||typeof body.email!=='string'||body.email.length>254||!['admin','agent','owner'].includes(body.role||'agent'))return send(400,{error:'Revisá el correo y el rol'});
+        return send(200,{members:await directory.request('rpc/vm_manage_team',{method:'POST',body:{...base,p_action:body.action,p_email:body.email,p_role:body.role||'agent'}})});
+      }
+      if(url.pathname==='/api/businesses'){
+        if(!panelAuth||!directory)return send(200,{businesses:[],canCreate:false});
+        if(req.method==='GET')return send(200,{businesses:req.panelUser.memberships||[],selected:req.panelUser.businessId,canCreate:await directory.platformAdmin(req.panelUser.id)});
+        if(req.method==='POST'){
+          let body;try{body=JSON.parse((await readBody(req,2048)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
+          return send(201,{business:await directory.createBusiness(req.panelUser.id,body)});
+        }
+        return send(405,{error:'Método no permitido'});
+      }
       if(url.pathname==='/api/normalized/sync'&&req.method==='POST'){
-        if(!normalizedWriter)return send(503,{error:'Sincronización desactivada'});
+        if(!getWriter())return send(503,{error:'Sincronización desactivada'});
         if(panelAuth&&!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Permisos insuficientes'});
-        await queue;
-        const workspace=await store.load();
-        return send(200,{...await reconcileNormalized(normalizedWriter,workspace.conversations||[]),source:'workspace_reconciliation'});
+        await currentQueue();
+        const workspace=await activeStore().load();
+        return send(200,{...await reconcileNormalized(getWriter(),workspace.conversations||[]),source:'workspace_reconciliation'});
       }
       if(url.pathname==='/api/normalized/conversations'&&req.method==='GET'){
-        if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
+        if(!getInbox())return send(503,{error:'Bandeja normalizada no habilitada'});
         const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):30;
-        return send(200,{conversations:await normalizedInbox.list({state:url.searchParams.get('state')||undefined,limit}),source:'normalized_read_only'});
+        return send(200,{conversations:await getInbox().list({state:url.searchParams.get('state')||undefined,limit}),source:'normalized_read_only'});
       }
       if(url.pathname==='/api/normalized/conversation'&&req.method==='GET'){
-        if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
+        if(!getInbox())return send(503,{error:'Bandeja normalizada no habilitada'});
         const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):100;
-        return send(200,{...await normalizedInbox.detail(url.searchParams.get('id'),{limit}),source:'normalized_read_only'});
+        return send(200,{...await getInbox().detail(url.searchParams.get('id'),{limit}),source:'normalized_read_only'});
       }
       if(url.pathname==='/api/meta/status'&&req.method==='GET'){
         const checks={
@@ -240,17 +308,17 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
           outbound:false,mode:'simulation',connectionVerified:false});
       }
       if(url.pathname==='/api/services' && req.method==='GET'){
-        await queue;const d=await store.load();return send(200,{services:await serviceRows(d)});
+        await currentQueue();const d=await activeStore().load();return send(200,{services:await serviceRows(d)});
       }
       if(url.pathname==='/api/workspace'&&req.method==='GET') {
-        await queue;const data=await store.load();
-        return send(200,{...data,config:await engineConfig({...data,config:data.config||defaults}),mode:'simulation',outbound:false});
+        await currentQueue();const data=await activeStore().load();
+        return send(200,{...data,config:await engineConfig({...data,config:data.config||getDefaults()}),mode:'simulation',outbound:false,business:scope().business||null,role:req.panelUser?.role||'owner'});
       }
       if(req.method!=='POST')return send(405,{error:'Método no permitido'});
       if(url.pathname==='/api/service-image') {
-        if(!catalog)return send(503,{error:'La subida de fotos requiere configurar Supabase en el servidor'});
+        if(!getCatalog())return send(503,{error:'La subida de fotos requiere configurar Supabase en el servidor'});
         const image=await readBody(req,5242880);
-        const imageUrl=await catalog.uploadImage(image,req.headers['content-type']);
+        const imageUrl=await getCatalog().uploadImage(image,req.headers['content-type']);
         return send(200,{image_url:imageUrl});
       }
       if(url.pathname==='/webhooks/meta'&&env.META_WEBHOOKS_ENABLED!=='true')return send(503,{error:'Webhooks desactivados'});
@@ -258,17 +326,26 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       const raw=(await readBody(req,65536)).toString('utf8');
       if(url.pathname==='/webhooks/meta'&&!signature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return send(403,{error:'Firma inválida'});
       let body;try{body=JSON.parse(raw);}catch{return send(400,{error:'JSON inválido'});}
-      if(url.pathname==='/webhooks/meta') {if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});const events=metaEvents(body);await mutate(async d=>{for(const e of events)if(typeof e.text==='string'&&e.text.length<=4000)await incoming(d,e);});return send(200,{received:true,outbound:false});}
+      if(url.pathname==='/webhooks/meta') {
+        if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});
+        const events=metaEvents(body);
+        for(const e of events){
+          if(typeof e.text!=='string'||e.text.length>4000)continue;
+          if(directory)selectBusiness(await directory.channelBusiness(e.externalAccountId,e.channel==='whatsapp'?'whatsapp':e.channel==='instagram_comentario'?'instagram_comment':'instagram_dm'));
+          await mutate(d=>incoming(d,e));
+        }
+        return send(200,{received:true,outbound:false});
+      }
       if(url.pathname==='/api/services'){
         if(body.action==='archive'){
-          if(catalog)return send(200,{service:await catalog.archive(body)});
+          if(getCatalog())return send(200,{service:await getCatalog().archive(body)});
           return send(200,{service:await mutate(d=>{
             const found=(d.config?.services||[]).find(s=>s.id===body.id);
             if(!found)throw Object.assign(Error('Servicio inexistente'),{status:404});
             found.active=false;found.approved=false;audit(d,'servicio_archivado');return fromEngineService(found);
           })});
         }
-        const service=catalog?await catalog.save(body):await mutate(d=>localServiceSave(d,body));
+        const service=getCatalog()?await getCatalog().save(body):await mutate(d=>localServiceSave(d,body));
         return send(200,{service});
       }
       if(url.pathname==='/api/ai/check'){
@@ -312,7 +389,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(!body.tone || typeof body.tone.greeting!=='string'||!body.tone.greeting.trim()||
            typeof body.tone.style!=='string')return send(400,{error:'El tono de la IA es inválido'});
         await mutate(d=>{
-          d.config ||= structuredClone(defaults);
+          d.config ||= getDefaults();
           d.config={...d.config,tone:body.tone,business:body.business||d.config.business,
             notice:typeof body.notice==='string'?body.notice:d.config.notice};
           audit(d,'tono_actualizado');
@@ -331,6 +408,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       return send(404,{error:'No encontrado'});
     }catch(e){send(e.status||500,{error:e.status?e.message:'No se pudo completar la operación; los datos no se confirmaron.'});}
   };
-  return env.SERVERLESS==='true'?handler:http.createServer(handler);
+  const scopedHandler=(req,res)=>requestScope.run({},()=>handler(req,res));
+  return env.SERVERLESS==='true'?scopedHandler:http.createServer(scopedHandler);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){const app=await createApp();app.listen(Number(process.env.PORT||3000),'127.0.0.1',()=>console.log(`Valentino: http://127.0.0.1:${process.env.PORT||3000} · simulación, sin envíos reales`));}

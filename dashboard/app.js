@@ -1,12 +1,13 @@
 import {mediaPresentation} from './media-presentation.mjs';
 let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token',activeView='overview',onboardingStep=0,aiStatus={enabled:false};
+let activeBusinessId='',businessGeneration=0;
 const $=s=>document.querySelector(s);
 const labels={ia:'IA',revision:'Revisión',humano:'Humano'};
 const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instagram DM',instagram_comentario:'Instagram comentario'};
-async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error);return d;}
+async function api(path,body){const generation=businessGeneration;const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(activeBusinessId?{'X-Business-Id':activeBusinessId}:{}),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(generation!==businessGeneration)throw Error('La empresa activa cambió; actualizá la vista.');if(!r.ok)throw Error(d.error);return d;}
 function node(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e;}
 function fail(e){$('#error').textContent=e.message;}
-async function refresh(){try{const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
+async function refresh(){try{await refreshBusinesses();const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
  const businessName=data.config?.business?.name||'Negocio activo';
  $('#activeBusinessName').textContent=businessName;
@@ -23,7 +24,7 @@ function render(){
  syncSettings();
 
 }
-$('#access').onclick=()=>{if(authMode==='supabase'){token='';showLogin(true);return;}token=prompt('Clave de acceso al panel (solo si está configurada en el servidor)')||'';refresh();};
+$('#access').onclick=()=>{if(authMode==='supabase'){token='';activeBusinessId='';businessGeneration++;data=null;showLogin(true);return;}token=prompt('Clave de acceso al panel (solo si está configurada en el servidor)')||'';refresh();};
 $('#new').onclick=()=>{selected=null;$('#name').value='';render();$('#text').focus();};$('#filter').onchange=render;
 $('#simulate').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{const c=await api('simulate',{text:$('#text').value,channel:$('#simulationChannel').value,serviceId:$('#service').value,vehicle:Object.fromEntries(['make','model','year','engine'].map(k=>[k,$('#'+k).value])),contact:$('#name').value||'Cliente de prueba',...(selected?{conversationId:selected}:{contact:$('#name').value||'Prueba '+(data.conversations.length+1)})});selected=c.id;$('#text').value='';await refresh();}catch(e){fail(e);}finally{b.disabled=false;}};
 $('#state').onchange=async()=>{try{await api('conversation',{id:selected,action:'state',state:$('#state').value});await refresh();}catch(e){fail(e);}};
@@ -191,7 +192,7 @@ $('#loginForm').onsubmit=async event=>{
 
 
 /* Navegación, indicadores y onboarding V1 */
-const views=['overview','inbox','catalog','config','onboarding','channels','metaReview'];
+const views=['overview','inbox','catalog','config','onboarding','channels','metaReview','calendar','team'];
 function showView(view){
   const v=views.includes(view)?view:'overview';activeView=v;
   views.forEach(name=>{const section=document.getElementById(name);if(section)section.hidden=name!==v;});
@@ -205,6 +206,8 @@ function showView(view){
   history.replaceState(null,'',location.pathname+location.search+'#'+v);
   if(v==='onboarding')updateOnboardingStep();
   if(v==='metaReview')refreshMetaReview();
+  if(v==='calendar')refreshCalendar().catch(fail);
+  if(v==='team')refreshTeam().catch(fail);
   window.scrollTo({top:0,behavior:'instant'});
 }
 function renderOverview(){
@@ -424,4 +427,34 @@ $('#metaReviewSend').onsubmit=async e=>{
 };
 $('#metaReviewCreate').onsubmit=e=>reviewSubmit(e,'template',{name:$('#metaReviewName').value,language:$('#metaReviewLanguage').value,text:$('#metaReviewBody').value},'metaReviewCreateResult');
 
+
+
+async function refreshBusinesses(){
+ const result=await api('businesses');const picker=$('#businessPicker');picker.replaceChildren();
+ for(const member of result.businesses||[])picker.add(new Option(member.business.display_name+' · '+member.role,member.businessId));
+ if(result.selected)activeBusinessId=result.selected;
+ picker.value=activeBusinessId;picker.disabled=picker.options.length<2;
+ $('#createBusinessCard').hidden=!result.canCreate;
+}
+$('#businessPicker').onchange=async e=>{activeBusinessId=e.target.value;businessGeneration++;selected=null;data=null;catalogServices=[];$('#messages').replaceChildren();$('#bookingList').replaceChildren();$('#teamList').replaceChildren();await refresh();showView(activeView);};
+function mayManage(){return ['owner','admin'].includes(data?.role);}
+async function refreshCalendar(){
+ const [status,result]=await Promise.all([api('calendar/status'),api('calendar/bookings')]);
+ $('#calendarStatus').textContent=(status.connected?'Google Calendar conectado. ':status.configured?'Listo para conectar Google. ':'Falta configurar la aplicación de Google en el servidor. ')+'Zona horaria del negocio: '+status.timezone;
+ $('#calendarConnect').disabled=!status.configured||!mayManage();
+ $('#bookingForm').querySelectorAll('input,button').forEach(el=>el.disabled=!status.connected||!mayManage());
+ const list=$('#bookingList');list.replaceChildren();
+ for(const b of result.bookings){const row=node('article','','item');row.append(node('strong',b.summary),node('p',new Date(b.start).toLocaleString('es-AR',{timeZone:status.timezone})+' · '+b.status),node('small',b.contact||''));if(mayManage()&&['pending','check_required','confirmed'].includes(b.status)){const check=node('button','Comprobar en Google');check.onclick=async()=>{check.disabled=true;try{await api('calendar/reconcile',{id:b.id});await refreshCalendar();}catch(e){fail(e);}finally{check.disabled=false;}};row.append(check);}list.append(row);}
+ if(!result.bookings.length)list.append(node('p','Todavía no hay turnos registrados.','muted'));
+}
+$('#calendarConnect').onclick=async()=>{try{const r=await api('calendar/connect',{});const u=new URL(r.url);if(u.origin!=='https://accounts.google.com')throw Error('URL de autorización inválida');location.assign(u.href);}catch(e){fail(e);}};
+$('#calendarRefresh').onclick=()=>refreshCalendar().catch(fail);
+let bookingRequestId=crypto.randomUUID();
+$('#bookingForm').oninput=()=>{bookingRequestId=crypto.randomUUID();$('#bookingResult').textContent='';};
+function bookingPayload(){const f=new FormData($('#bookingForm')),start=new Date(f.get('start'));if(!Number.isFinite(start.getTime()))throw Error('Elegí una fecha válida');return {requestId:bookingRequestId,summary:f.get('summary'),contact:f.get('contact'),start:start.toISOString(),end:new Date(start.getTime()+Number(f.get('duration'))*60000).toISOString(),confirm:f.get('confirm')==='on'};}
+$('#calendarCheck').onclick=async()=>{try{const r=await api('calendar/availability',bookingPayload());$('#bookingResult').textContent=r.available?'Horario disponible al momento de la consulta.':'Horario ocupado.';}catch(e){fail(e);}};
+$('#bookingForm').onsubmit=async e=>{e.preventDefault();e.submitter.disabled=true;try{const r=await api('calendar/book',bookingPayload());$('#bookingResult').textContent=r.booking.status==='confirmed'?'Turno confirmado en Google Calendar.':'Estado: '+r.booking.status+'. Comprobá el turno antes de repetirlo.';await refreshCalendar();}catch(e){fail(e);}finally{e.submitter.disabled=false;}};
+async function refreshTeam(){const result=await api('team');const list=$('#teamList');list.replaceChildren();for(const member of result.members||[])list.append(node('p',member.email+' · '+member.role+(member.active?'':' · Inactivo')));$('#teamForm').querySelectorAll('input,select,button').forEach(el=>el.disabled=!mayManage());}
+$('#teamForm').onsubmit=async e=>{e.preventDefault();try{await api('team',{action:'add',...Object.fromEntries(new FormData(e.target))});await refreshTeam();}catch(e){fail(e);}};
+$('#businessForm').onsubmit=async e=>{e.preventDefault();e.submitter.disabled=true;try{await api('businesses',Object.fromEntries(new FormData(e.target)));e.target.reset();await refresh();}catch(e){fail(e);}finally{e.submitter.disabled=false;}};
 initPanel();
