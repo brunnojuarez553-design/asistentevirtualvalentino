@@ -11,3 +11,42 @@ document.querySelectorAll('[data-scenario]').forEach(button=>button.addEventList
  document.querySelectorAll('[data-scenario]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
  for(const field of ['question','context','answer','result','detail'])document.getElementById('demo-'+field).textContent=scenario[field];
 }));
+
+// Progressive enhancement: content remains readable if JS, observer or motion is unavailable.
+(function setupScrollReveal(){
+ const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
+ if(preference.matches || !('IntersectionObserver' in window))return;
+ const targets=[...document.querySelectorAll('.principle-strip span, .section-title, .steps article, .feature, .control-copy, .control-list article, .readiness, .faq-list details, .cta')];
+ let observer;
+ const show=element=>{element.classList.add('reveal-visible');element.classList.remove('reveal-pending');};
+ const showAll=()=>{observer?.disconnect();targets.forEach(show);};
+ try{
+  observer=new IntersectionObserver(entries=>{
+   for(const entry of entries){
+    if(!entry.isIntersecting)continue;
+    show(entry.target);observer.unobserve(entry.target);
+   }
+  },{threshold:0,rootMargin:'0px 0px -28px 0px'});
+  for(const element of targets){
+   // Items already on screen never disappear during initialization or history restoration.
+   if(element.getBoundingClientRect().top<window.innerHeight-28)continue;
+   element.classList.add('scroll-reveal','reveal-pending');
+   if(element.matches('.steps article, .feature, .control-list article, .faq-list details')){
+    const siblings=[...element.parentElement.children];
+    element.dataset.revealOrder=String(siblings.indexOf(element)%3);
+   }
+   observer.observe(element);
+  }
+  // Keyboard navigation and fragment links must never leave their destination hidden.
+  document.addEventListener('focusin',event=>{
+   const target=event.target.closest('.reveal-pending');if(target){show(target);observer.unobserve(target);}
+  });
+  window.addEventListener('hashchange',()=>{
+   const id=location.hash.slice(1);const target=document.getElementById(id);
+   if(!target)return;
+   for(const element of targets)if(element===target||target.contains(element)){show(element);observer.unobserve(element);}
+  });
+  window.addEventListener('pageshow',event=>{if(event.persisted)showAll();});
+  preference.addEventListener('change',event=>{if(event.matches)showAll();});
+ }catch{showAll();}
+})();
