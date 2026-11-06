@@ -6,6 +6,7 @@ import {respond} from './lib/engine.mjs';
 import {knownVehicleDetails} from './lib/valentino-voice.mjs';
 import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
+import {NormalizedInbox} from './lib/normalized-inbox.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 import {PanelAuth} from './lib/panel-auth.mjs';
@@ -19,6 +20,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     new PanelAuth({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,secretKey:env.SUPABASE_SERVICE_ROLE_KEY}):null;
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
+  const normalizedInbox=env.NORMALIZED_INBOX_ENABLED==='true'?new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const loginAttempts=new Map();
   const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
   let queue=Promise.resolve();
@@ -137,6 +139,16 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}` &&
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
+      }
+      if(url.pathname==='/api/normalized/conversations'&&req.method==='GET'){
+        if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
+        const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):30;
+        return send(200,{conversations:await normalizedInbox.list({state:url.searchParams.get('state')||undefined,limit}),source:'normalized_read_only'});
+      }
+      if(url.pathname==='/api/normalized/conversation'&&req.method==='GET'){
+        if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
+        const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):100;
+        return send(200,{...await normalizedInbox.detail(url.searchParams.get('id'),{limit}),source:'normalized_read_only'});
       }
       if(url.pathname==='/api/ai/status'&&req.method==='GET'){
         return send(200,{enabled:!!provider,provider:provider?.provider||null,
