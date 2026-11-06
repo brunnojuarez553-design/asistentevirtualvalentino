@@ -50,3 +50,37 @@ document.querySelectorAll('[data-scenario]').forEach(button=>button.addEventList
   preference.addEventListener('change',event=>{if(event.matches)showAll();});
  }catch{showAll();}
 })();
+
+(function setupAtmosphere(){
+ const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
+ const header=document.querySelector('.topbar');
+ let scrollFrame=0;
+ const updateHeader=()=>{header?.classList.toggle('is-scrolled',window.scrollY>24);scrollFrame=0;};
+ window.addEventListener('scroll',()=>{if(!scrollFrame)scrollFrame=requestAnimationFrame(updateHeader);},{passive:true});
+ updateHeader();
+ if(!preference.matches && 'IntersectionObserver' in window){
+  const observer=new IntersectionObserver(entries=>{
+   for(const entry of entries)entry.target.classList.toggle('fx-active',entry.isIntersecting);
+  },{threshold:0});
+  document.querySelectorAll('.ambient-scene,.product-preview').forEach(element=>observer.observe(element));
+  preference.addEventListener('change',event=>{if(event.matches){observer.disconnect();document.querySelectorAll('.fx-active').forEach(element=>element.classList.remove('fx-active'));}});
+ }
+ if(preference.matches || !window.matchMedia('(hover: hover) and (pointer: fine)').matches)return;
+ document.querySelectorAll('.feature,.product-preview').forEach(card=>{
+  let frame=0;
+  const reset=()=>{if(frame)cancelAnimationFrame(frame);frame=0;card.style.removeProperty('--spot-x');card.style.removeProperty('--spot-y');};
+  card.addEventListener('pointermove',event=>{
+   if(preference.matches)return;
+   if(frame)cancelAnimationFrame(frame);
+   const {clientX,clientY}=event;
+   frame=requestAnimationFrame(()=>{
+    const rect=card.getBoundingClientRect();
+    card.style.setProperty('--spot-x',`${clientX-rect.left}px`);
+    card.style.setProperty('--spot-y',`${clientY-rect.top}px`);
+    frame=0;
+   });
+  });
+  card.addEventListener('pointerleave',reset);
+  preference.addEventListener('change',event=>{if(event.matches)reset();});
+ });
+})();
