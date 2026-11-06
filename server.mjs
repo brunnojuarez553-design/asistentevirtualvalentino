@@ -92,7 +92,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       catch(error){console.error('Media review fallback:',error.code||'processing_error');}
     }
     c.messages.push({id,role:'cliente',text:mediaAnalysis?.text||text,at:new Date().toISOString(),...(mediaType?{mediaType}: {}),...(mediaAnalysis?{mediaAnalysisKind:mediaAnalysis.kind}: {})});
-    const result=mediaType
+    const result=c.state==='humano' ? {state:'humano',reply:null,reason:'Atención pausada para intervención del equipo.'} : const result=mediaType
       ?{state:'revision',reply:null,reason:mediaAnalysis?'Archivo ('+mediaType+') interpretado automáticamente; revisión humana obligatoria.':'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
       :await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
