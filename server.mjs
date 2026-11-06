@@ -22,7 +22,25 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const loginAttempts=new Map();
   const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
   let queue=Promise.resolve();
-  const mutate=fn=>{const next=queue.then(async()=>{const data=await store.load();data.config ||= structuredClone(defaults);const result=await fn(data);await store.save(data);return result;});queue=next.catch(()=>{});return next;};
+  // CAS prevents two Vercel instances from overwriting each other's workspace updates.
+  // Retries re-evaluate the mutation against the latest snapshot, including duplicate-event checks.
+  const mutate=fn=>{
+    const next=queue.then(async()=>{
+      for(let attempt=0;attempt<5;attempt++){
+        const snapshot=typeof store.loadSnapshot==='function'?await store.loadSnapshot():{data:await store.load(),version:null};
+        const data=snapshot.data;
+        data.config ||= structuredClone(defaults);
+        const result=await fn(data);
+        const saved=typeof store.saveConditional==='function'
+          ?await store.saveConditional(data,snapshot.version)
+          :(await store.save(data),true);
+        if(saved)return result;
+      }
+      throw Object.assign(Error('Workspace busy; retry the request'),{status:409});
+    });
+    queue=next.catch(()=>{});
+    return next;
+  };
   const audit=(d,action,id)=>d.audit.push({id:randomUUID(),at:new Date().toISOString(),action,conversationId:id});
   // Un único catálogo de origen: tablas vm_services en Supabase o workspace local en pruebas.
   const serviceRows=async d=>catalog?await catalog.list():(d.config?.services||defaults.services).map(fromEngineService);
