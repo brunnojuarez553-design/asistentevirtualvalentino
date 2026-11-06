@@ -40,10 +40,10 @@ export default async function vercelHandler(req,res){
       }));
     }
     res.writeHead(503,{'Content-Type':'text/html; charset=utf-8'});
-    return res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Valentino Motors · Configuración pendiente</title></head>
+    return res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Austral Web Studio · Configuración pendiente</title></head>
     <body style="background:#090a0c;color:#fff;font:16px system-ui;display:grid;place-items:center;min-height:92vh;margin:0;padding:20px">
     <main style="width:min(100%,570px);background:#17191e;border:1px solid #3b3e46;border-radius:20px;padding:32px">
-    <div style="color:#ec1725;font-weight:800;letter-spacing:.1em">VALENTINO MOTORS LG</div>
+    <div style="color:#f0a15e;font-weight:800;letter-spacing:.1em">AUSTRAL WEB STUDIO</div>
     <h1 style="font-size:28px">El panel está pendiente de configuración.</h1>
     <p style="color:#b9bdc4;line-height:1.7">El código ya está publicado, pero falta conectar de forma segura las credenciales privadas de Supabase en las variables del proyecto Vercel. El acceso permanece bloqueado hasta completarlo.</p>
     <p style="font-size:14px;color:#b9bdc4">Administrador: Vercel → Settings → Environment Variables. Luego, Redeploy.</p>

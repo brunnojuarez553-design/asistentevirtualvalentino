@@ -8,6 +8,9 @@ function node(tag,text,className){const e=document.createElement(tag);e.textCont
 function fail(e){$('#error').textContent=e.message;}
 async function refresh(){try{const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
+ const businessName=data.config?.business?.name||'Negocio activo';
+ $('#activeBusinessName').textContent=businessName;
+ $('.business-avatar').textContent=businessName.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase();
  $('#total').textContent=data.conversations.length;$('#reviewCount').textContent=data.conversations.filter(c=>c.state==='revision').length;$('#humanCount').textContent=data.conversations.filter(c=>c.state==='humano').length;$('#alertCount').textContent=data.alerts.filter(a=>!a.resolved).length;
  const list=$('#conversations');list.replaceChildren();const filtered=data.conversations.filter(c=>!$('#filter').value||c.state===$('#filter').value);
  if(!filtered.length)list.append(node('p','Todavía no hay conversaciones en esta vista.','muted'));
