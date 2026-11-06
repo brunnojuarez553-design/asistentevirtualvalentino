@@ -41,7 +41,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(saved){
           // Mirror only after the authoritative workspace commit. Failures are visible,
           // never falsely treated as successful; replay is idempotent by message UUID.
-          if(normalizedWriter && result?.id && Array.isArray(result.messages))await normalizedWriter.ingest(result);
+          if(normalizedWriter){try{await normalizedWriter.reconcile(data.conversations||[]);}catch(error){console.error('Normalized sync pending:',error.message);}}
           return result;
         }
       }
