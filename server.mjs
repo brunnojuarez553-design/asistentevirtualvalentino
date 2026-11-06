@@ -7,6 +7,7 @@ import {knownVehicleDetails} from './lib/valentino-voice.mjs';
 import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
 import {NormalizedInbox} from './lib/normalized-inbox.mjs';
+import {NormalizedWriter} from './lib/normalized-writer.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 import {PanelAuth} from './lib/panel-auth.mjs';
@@ -20,6 +21,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     new PanelAuth({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,secretKey:env.SUPABASE_SERVICE_ROLE_KEY}):null;
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
+  const normalizedWriter=env.NORMALIZED_WRITE_ENABLED==='true'?new NormalizedWriter({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const normalizedInbox=env.NORMALIZED_INBOX_ENABLED==='true'?new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const loginAttempts=new Map();
   const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
@@ -36,7 +38,12 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         const saved=typeof store.saveConditional==='function'
           ?await store.saveConditional(data,snapshot.version)
           :(await store.save(data),true);
-        if(saved)return result;
+        if(saved){
+          // Mirror only after the authoritative workspace commit. Failures are visible,
+          // never falsely treated as successful; replay is idempotent by message UUID.
+          if(normalizedWriter && result?.id && Array.isArray(result.messages))await normalizedWriter.ingest(result);
+          return result;
+        }
       }
       throw Object.assign(Error('Workspace busy; retry the request'),{status:409});
     });
