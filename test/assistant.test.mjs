@@ -212,7 +212,7 @@ test('adjuntos de Instagram se derivan sin interpretar sus URLs',()=>{
  const events=metaEvents({entry:[{messaging:[{sender:{id:'sender'},message:{
   mid:'ig-attachment',attachments:[{type:'image',payload:{url:'https://private.example/photo'}}]}}]}]});
  assert.equal(events.length,1);
- assert.equal(events[0].mediaType,'attachment');
+ assert.equal(events[0].mediaType,'image');
  assert.ok(!events[0].text.includes('private.example'));
 });
 test('webhook Meta recibe audio y genera alerta humana sin respuesta automática',async t=>{
