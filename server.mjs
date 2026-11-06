@@ -104,7 +104,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
           if(!authorization.startsWith('Bearer '))return send(401,{error:'Iniciá sesión para continuar'});
           req.panelUser=await panelAuth.authenticate(authorization.slice(7));
           if(req.method!=='GET' &&
-             ['/api/services','/api/service-image','/api/config','/api/ai/check'].includes(url.pathname) &&
+             ['/api/services','/api/service-image','/api/config','/api/ai/check','/api/conversation'].includes(url.pathname) &&
              !['owner','admin'].includes(req.panelUser.role))
             return send(403,{error:'No tenés permisos para modificar servicios y configuración'});
         }else if(env.DASHBOARD_TOKEN
