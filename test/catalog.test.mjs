@@ -97,3 +97,24 @@ test('Fotos: acepta solo JPG/PNG/WebP y no expone credenciales en la URL públic
  await assert.rejects(()=>store.uploadImage(Buffer.from('<svg onload=alert(1)>'),'image/svg+xml'),/JPG, PNG o WebP/);
  await assert.rejects(()=>store.uploadImage(Buffer.alloc(5242881),'image/jpeg'),/menos de 5 MB/);
 });
+
+
+test('motor recibe únicamente tarifas exactas aprobadas y vigentes, nunca el precio orientativo',async()=>{
+ const catalog=new SupabaseCatalog({url:'https://example.supabase.co',key:'test'});
+ catalog.list=async()=>[
+  {id:'11111111-1111-4111-8111-111111111111',code:'blindaje',name:'Blindaje',active:true,approved:true,reference_price_usd:665},
+  {id:'22222222-2222-4222-8222-222222222222',code:'draft',name:'Borrador',active:true,approved:false,reference_price_usd:999}
+ ];
+ let requested;
+ catalog.listPriceRules=async ids=>{
+  requested=ids;
+  return [{service_id:ids[0],make:'Toyota',model:'Hilux',model_year:2020,engine:'2.8',currency:'USD',amount:450,approved:true,valid_until:null,terms:'Revisión previa'}];
+ };
+ const result=await catalog.listForEngine();
+ assert.deepEqual(requested,['11111111-1111-4111-8111-111111111111']);
+ assert.equal(result[0].referencePriceUsd,665);
+ assert.equal(result[0].prices.length,1);
+ assert.equal(result[0].prices[0].amount,450);
+ assert.equal(result[0].prices[0].year,'2020');
+ assert.equal(result[1].prices.length,0);
+});
