@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {respond} from './lib/engine.mjs';
+import {knownVehicleDetails} from './lib/valentino-voice.mjs';
 import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
 import {createProvider} from './lib/provider.mjs';
@@ -48,8 +49,10 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
+    const detected=knownVehicleDetails(text,c.messages||[],vehicle||c.vehicle||{});
+    c.vehicle={make:detected.brand,model:detected.model,year:detected.year,engine:detected.engine};
     c.messages.push({id,role:'cliente',text,at:new Date().toISOString()});
-    const result=await respond({text,conversation:c,config:await engineConfig(d),vehicle,serviceId,provider});
+    const result=await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
