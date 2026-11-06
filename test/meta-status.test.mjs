@@ -1,0 +1,20 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createApp} from '../server.mjs';
+test('Meta readiness is authenticated, secret-free and outbound disabled',async t=>{
+ const app=await createApp({DASHBOARD_TOKEN:'test-panel',META_APP_SECRET:'do-not-expose',META_ACCESS_TOKEN:'private-token',META_WEBHOOKS_ENABLED:'false'});
+ await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise(resolve=>app.close(resolve)));
+ const root='http://127.0.0.1:'+app.address().port;
+ assert.equal((await fetch(root+'/api/meta/status')).status,401);
+ const response=await fetch(root+'/api/meta/status',{headers:{authorization:'Bearer test-panel'}});
+ assert.equal(response.status,200);
+ const raw=await response.text();
+ assert.ok(!raw.includes('do-not-expose'));
+ assert.ok(!raw.includes('private-token'));
+ const status=JSON.parse(raw);
+ assert.equal(status.outboundEnabled,false);
+ assert.equal(status.ready,false);
+ assert.equal(status.checks.appSecretConfigured,true);
+ assert.equal(status.checks.webhookEnabled,false);
+});

@@ -3,8 +3,13 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {respond} from './lib/engine.mjs';
+import {knownVehicleDetails} from './lib/valentino-voice.mjs';
 import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
+import {NormalizedInbox} from './lib/normalized-inbox.mjs';
+import {NormalizedWriter} from './lib/normalized-writer.mjs';
+import {analyzeMetaMedia} from './lib/media-analysis.mjs';
+import {reconcileNormalized} from './lib/normalized-reconcile.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 import {PanelAuth} from './lib/panel-auth.mjs';
@@ -18,14 +23,39 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     new PanelAuth({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,secretKey:env.SUPABASE_SERVICE_ROLE_KEY}):null;
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
+  const normalizedWriter=env.NORMALIZED_WRITE_ENABLED==='true'?new NormalizedWriter({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
+  const normalizedInbox=env.NORMALIZED_INBOX_ENABLED==='true'?new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const loginAttempts=new Map();
   const catalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
   let queue=Promise.resolve();
-  const mutate=fn=>{const next=queue.then(async()=>{const data=await store.load();data.config ||= structuredClone(defaults);const result=await fn(data);await store.save(data);return result;});queue=next.catch(()=>{});return next;};
+  // CAS prevents two Vercel instances from overwriting each other's workspace updates.
+  // Retries re-evaluate the mutation against the latest snapshot, including duplicate-event checks.
+  const mutate=fn=>{
+    const next=queue.then(async()=>{
+      for(let attempt=0;attempt<5;attempt++){
+        const snapshot=typeof store.loadSnapshot==='function'?await store.loadSnapshot():{data:await store.load(),version:null};
+        const data=snapshot.data;
+        data.config ||= structuredClone(defaults);
+        const result=await fn(data);
+        const saved=typeof store.saveConditional==='function'
+          ?await store.saveConditional(data,snapshot.version)
+          :(await store.save(data),true);
+        if(saved){
+          // Mirror only after the authoritative workspace commit. Failures are visible,
+          // never falsely treated as successful; replay is idempotent by message UUID.
+          if(normalizedWriter){try{await reconcileNormalized(normalizedWriter,data.conversations||[]);}catch(error){console.error('Normalized sync pending:',error.message);}}
+          return result;
+        }
+      }
+      throw Object.assign(Error('Workspace busy; retry the request'),{status:409});
+    });
+    queue=next.catch(()=>{});
+    return next;
+  };
   const audit=(d,action,id)=>d.audit.push({id:randomUUID(),at:new Date().toISOString(),action,conversationId:id});
   // Un único catálogo de origen: tablas vm_services en Supabase o workspace local en pruebas.
   const serviceRows=async d=>catalog?await catalog.list():(d.config?.services||defaults.services).map(fromEngineService);
-  const engineConfig=async d=>({...d.config,services:(await serviceRows(d)).map(toEngineService)});
+  const engineConfig=async d=>({...d.config,services:catalog?await catalog.listForEngine():(await serviceRows(d)).map(toEngineService)});
   const localServiceSave=async (d,body)=>{
     d.config ||= structuredClone(defaults);
     d.config.services ||= [];
@@ -43,13 +73,28 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     audit(d,previous?'servicio_editado':'servicio_creado');
     return {...record,...parsed,id:parsed.code};
   };
-  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId}) {
+  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId,outboundHuman=false}) {
     if(d.events.includes(id))return {duplicate:true};
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
-    c.messages.push({id,role:'cliente',text,at:new Date().toISOString()});
-    const result=await respond({text,conversation:c,config:await engineConfig(d),vehicle,serviceId,provider});
+    if(outboundHuman){
+      c.messages.push({id,role:'equipo',text,at:new Date().toISOString(),delivery:'enviado_desde_whatsapp_business'});
+      c.state='humano';c.draft=null;c.reason='Valentino respondió desde WhatsApp Business. IA pausada hasta reactivación manual.';
+      if(!d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason,at:new Date().toISOString(),resolved:false});
+      d.events.push(id);audit(d,'intervencion_whatsapp_business',c.id);return c;
+    }
+    const detected=knownVehicleDetails(text,c.messages||[],vehicle||c.vehicle||{});
+    c.vehicle={make:detected.brand,model:detected.model,year:detected.year,engine:detected.engine};
+    let mediaAnalysis=null;
+    if(mediaType && mediaId && ['audio','image'].includes(mediaType) && env.MEDIA_ANALYSIS_ENABLED==='true'){
+      try{mediaAnalysis=await analyzeMetaMedia({mediaId,type:mediaType,token:env.META_ACCESS_TOKEN,groqKey:env.GROQ_API_KEY,visionKey:env.OPENAI_API_KEY,visionModel:env.VISION_MODEL});}
+      catch(error){console.error('Media review fallback:',error.code||'processing_error');}
+    }
+    c.messages.push({id,role:'cliente',text:mediaAnalysis?.text||text,at:new Date().toISOString(),...(mediaType?{mediaType}: {}),...(mediaAnalysis?{mediaAnalysisKind:mediaAnalysis.kind}: {})});
+    const result=c.state==='humano' ? {state:'humano',reply:null,reason:'Atención pausada para intervención del equipo.'} : mediaType
+      ?{state:'revision',reply:null,reason:mediaAnalysis?'Archivo ('+mediaType+') interpretado automáticamente; revisión humana obligatoria.':'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
+      :await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
@@ -94,9 +139,9 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(url.pathname==='/relevamiento'){
           res.writeHead(302,{Location:'/#onboarding','Cache-Control':'no-store'});return res.end();
         }
-        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
+        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/media-presentation.mjs':'dashboard/media-presentation.mjs','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
         if(!files[url.pathname])return send(404,{error:'No encontrado'});
-        const path=files[url.pathname];res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
+        const path=files[url.pathname];res.writeHead(200,{'Content-Type':(path.endsWith('.js')||path.endsWith('.mjs'))?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
       }
       if(url.pathname.startsWith('/api/')){
         if(panelAuth){
@@ -104,7 +149,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
           if(!authorization.startsWith('Bearer '))return send(401,{error:'Iniciá sesión para continuar'});
           req.panelUser=await panelAuth.authenticate(authorization.slice(7));
           if(req.method!=='GET' &&
-             ['/api/services','/api/service-image','/api/config','/api/ai/check'].includes(url.pathname) &&
+             ['/api/services','/api/service-image','/api/config','/api/ai/check','/api/conversation'].includes(url.pathname) &&
              !['owner','admin'].includes(req.panelUser.role))
             return send(403,{error:'No tenés permisos para modificar servicios y configuración'});
         }else if(env.DASHBOARD_TOKEN
@@ -114,6 +159,36 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}` &&
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
+      }
+      if(url.pathname==='/api/normalized/sync'&&req.method==='POST'){
+        if(!normalizedWriter)return send(503,{error:'Sincronización desactivada'});
+        if(panelAuth&&!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Permisos insuficientes'});
+        await queue;
+        const workspace=await store.load();
+        return send(200,{...await reconcileNormalized(normalizedWriter,workspace.conversations||[]),source:'workspace_reconciliation'});
+      }
+      if(url.pathname==='/api/normalized/conversations'&&req.method==='GET'){
+        if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
+        const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):30;
+        return send(200,{conversations:await normalizedInbox.list({state:url.searchParams.get('state')||undefined,limit}),source:'normalized_read_only'});
+      }
+      if(url.pathname==='/api/normalized/conversation'&&req.method==='GET'){
+        if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
+        const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):100;
+        return send(200,{...await normalizedInbox.detail(url.searchParams.get('id'),{limit}),source:'normalized_read_only'});
+      }
+      if(url.pathname==='/api/meta/status'&&req.method==='GET'){
+        const checks={
+          webhookEnabled:env.META_WEBHOOKS_ENABLED==='true',
+          appSecretConfigured:Boolean(env.META_APP_SECRET),
+          verifyTokenConfigured:Boolean(env.META_VERIFY_TOKEN),
+          accessTokenConfigured:Boolean(env.META_ACCESS_TOKEN),
+          phoneNumberConfigured:Boolean(env.META_PHONE_NUMBER_ID),
+          wabaConfigured:Boolean(env.META_WABA_ID),
+          coexistenceVerified:env.META_COEXISTENCE_VERIFIED==='true',
+          manualTakeoverTested:env.META_MANUAL_TAKEOVER_TESTED==='true'
+        };
+        return send(200,{provider:'meta',checks,ready:Object.values(checks).every(Boolean),outboundEnabled:false,mode:'simulation'});
       }
       if(url.pathname==='/api/ai/status'&&req.method==='GET'){
         return send(200,{enabled:!!provider,provider:provider?.provider||null,

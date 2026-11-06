@@ -174,3 +174,59 @@ test('voz comercial Valentino: evita tuteo y preguntas repetidas con Corolla 2.0
  assert.doesNotMatch(resp.reply,/te ayudamos|nos confirmas|tu vehículo|tenés|podés/i);
  assert.match(resp.reason,/no respetó el estilo/);
 });
+
+
+test('un precio inventado en consulta general queda bloqueado',async()=>{
+ const r=await respond({text:'Necesito información de mantenimiento',config,
+  conversation:{state:'ia',messages:[],channel:'whatsapp'},
+  provider:{draft:async()=> 'El servicio cuesta USD 999.'}});
+ assert.doesNotMatch(r.reply,/999|USD/);
+ assert.match(r.reason,/importe/);
+});
+test('una garantía inventada por IA no se publica',async()=>{
+ const r=await respond({text:'Necesito información del servicio',config,
+  conversation:{state:'ia',messages:[],channel:'whatsapp'},
+  provider:{draft:async()=> 'Le damos garantía de 5 años.'}});
+ assert.doesNotMatch(r.reply,/5 años/);
+ assert.match(r.reason,/garantía/);
+});
+test('servicios pendientes de revisión no se cotizan automáticamente',()=>{
+ const pending=structuredClone(config);
+ pending.services[0].needs_technical_review=true;
+ assert.equal(quote(pending,'demo',vehicle),null);
+ pending.services[0].needs_technical_review=false;
+ pending.services[0].needs_legal_review=true;
+ assert.equal(quote(pending,'demo',vehicle),null);
+});
+
+test('WhatsApp audio e imagen se registran sin transcribir ni inventar contenido',()=>{
+ const events=metaEvents({entry:[{changes:[{value:{messages:[
+  {id:'audio-1',from:'58412',type:'audio',audio:{id:'private-id'}},
+  {id:'image-1',from:'58412',type:'image',image:{id:'private-id'}}
+ ]}}]}]});
+ assert.equal(events.length,2);
+ assert.deepEqual(events.map(e=>e.mediaType),['audio','image']);
+ assert.ok(events.every(e=>!e.text.includes('private-id')));
+});
+test('adjuntos de Instagram se derivan sin interpretar sus URLs',()=>{
+ const events=metaEvents({entry:[{messaging:[{sender:{id:'sender'},message:{
+  mid:'ig-attachment',attachments:[{type:'image',payload:{url:'https://private.example/photo'}}]}}]}]});
+ assert.equal(events.length,1);
+ assert.equal(events[0].mediaType,'image');
+ assert.ok(!events[0].text.includes('private.example'));
+});
+test('webhook Meta recibe audio y genera alerta humana sin respuesta automática',async t=>{
+ let state={config:null,conversations:[],alerts:[],audit:[],events:[]};
+ const store={load:async()=>structuredClone(state),save:async v=>{state=structuredClone(v)}};
+ const app=await createApp({DASHBOARD_TOKEN:'test',META_WEBHOOKS_ENABLED:'true',META_APP_SECRET:'secret'},store);
+ await new Promise(r=>app.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>app.close(r)));
+ const body=JSON.stringify({entry:[{changes:[{value:{messages:[{id:'audio-1',from:'58412',type:'audio',audio:{id:'private'}}]}}]}]});
+ const sig='sha256='+createHmac('sha256','secret').update(body).digest('hex');
+ const response=await fetch('http://127.0.0.1:'+app.address().port+'/webhooks/meta',{
+  method:'POST',headers:{'Content-Type':'application/json','x-hub-signature-256':sig},body});
+ assert.equal(response.status,200);
+ assert.equal(state.conversations[0].state,'revision');
+ assert.equal(state.conversations[0].messages.length,1);
+ assert.equal(state.conversations[0].messages[0].mediaType,'audio');
+ assert.equal(state.alerts.length,1);
+});
