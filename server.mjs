@@ -8,6 +8,7 @@ import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
 import {NormalizedInbox} from './lib/normalized-inbox.mjs';
 import {NormalizedWriter} from './lib/normalized-writer.mjs';
+import {analyzeMetaMedia} from './lib/media-analysis.mjs';
 import {reconcileNormalized} from './lib/normalized-reconcile.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
@@ -72,16 +73,21 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     audit(d,previous?'servicio_editado':'servicio_creado');
     return {...record,...parsed,id:parsed.code};
   };
-  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType}) {
+  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId}) {
     if(d.events.includes(id))return {duplicate:true};
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
     const detected=knownVehicleDetails(text,c.messages||[],vehicle||c.vehicle||{});
     c.vehicle={make:detected.brand,model:detected.model,year:detected.year,engine:detected.engine};
-    c.messages.push({id,role:'cliente',text,at:new Date().toISOString(),...(mediaType?{mediaType}: {})});
+    let mediaAnalysis=null;
+    if(mediaType && mediaId && ['audio','image'].includes(mediaType) && env.MEDIA_ANALYSIS_ENABLED==='true'){
+      try{mediaAnalysis=await analyzeMetaMedia({mediaId,type:mediaType,token:env.META_ACCESS_TOKEN,groqKey:env.GROQ_API_KEY,visionKey:env.OPENAI_API_KEY,visionModel:env.VISION_MODEL});}
+      catch(error){console.error('Media review fallback:',error.code||'processing_error');}
+    }
+    c.messages.push({id,role:'cliente',text:mediaAnalysis?.text||text,at:new Date().toISOString(),...(mediaType?{mediaType}: {}),...(mediaAnalysis?{mediaAnalysisKind:mediaAnalysis.kind}: {})});
     const result=mediaType
-      ?{state:'revision',reply:null,reason:'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
+      ?{state:'revision',reply:null,reason:mediaAnalysis?'Archivo ('+mediaType+') interpretado automáticamente; revisión humana obligatoria.':'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
       :await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
