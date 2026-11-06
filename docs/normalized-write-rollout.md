@@ -11,3 +11,7 @@ El proyecto real de Valentino está identificado, pero **esta funcionalidad perm
 7. No activar envío Meta ni reemplazar la bandeja actual todavía.
 
 Limitaciones: este RPC aún no crea contactos, identidades ni registros de `vm_handoffs`; `p_contact` y `p_channel` se reservan para una fase posterior. La bandeja normalizada puede mostrar conversaciones sin contacto vinculado. Es una integración parcial, no un cambio de almacenamiento definitivo.
+
+## Recuperación implementada en la rama
+
+El backend ahora invoca `reconcileNormalized` sobre todas las conversaciones del workspace después de cada escritura confirmada. Si el espejo falla, la escritura principal permanece confirmada y se registra el error en el servidor. La operación autenticada `POST /api/normalized/sync` permite a un propietario o administrador reintentar la reconciliación. La nueva prueba `test/normalized-reconcile.test.mjs` simula un fallo parcial y su reintento. **No existe aún una cola programada que reintente por sí sola en ausencia de nuevos eventos**; por eso no habilitar `NORMALIZED_WRITE_ENABLED` en producción todavía.
