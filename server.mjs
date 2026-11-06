@@ -148,6 +148,13 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
       }
+      if(url.pathname==='/api/normalized/sync'&&req.method==='POST'){
+        if(!normalizedWriter)return send(503,{error:'Sincronización desactivada'});
+        if(panelAuth&&!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Permisos insuficientes'});
+        await queue;
+        const workspace=await store.load();
+        return send(200,{...await reconcileNormalized(normalizedWriter,workspace.conversations||[]),source:'workspace_reconciliation'});
+      }
       if(url.pathname==='/api/normalized/conversations'&&req.method==='GET'){
         if(!normalizedInbox)return send(503,{error:'Bandeja normalizada no habilitada'});
         const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):30;
