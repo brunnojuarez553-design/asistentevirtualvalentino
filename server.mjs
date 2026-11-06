@@ -139,9 +139,9 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       if(!url.pathname.startsWith('/api/') && url.pathname!=='/webhooks/meta'){
         if(req.method!=='GET')return send(405,{error:'Método no permitido'});
         if(url.pathname==='/relevamiento'){
-          res.writeHead(302,{Location:'/#onboarding','Cache-Control':'no-store'});return res.end();
+          res.writeHead(302,{Location:'/dashboard#onboarding','Cache-Control':'no-store'});return res.end();
         }
-        const files={'/austral-logo.svg':'dashboard/austral-logo.svg','/austral-theme.css':'dashboard/austral-theme.css','/privacy':'dashboard/privacy.html','/terms':'dashboard/terms.html','/data-deletion':'dashboard/data-deletion.html','/legal.css':'dashboard/legal.css','/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/media-presentation.mjs':'dashboard/media-presentation.mjs','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
+        const files={'/home.css':'dashboard/home.css','/home.js':'dashboard/home.js','/austral-logo.svg':'dashboard/austral-logo.svg','/austral-theme.css':'dashboard/austral-theme.css','/privacy':'dashboard/privacy.html','/terms':'dashboard/terms.html','/data-deletion':'dashboard/data-deletion.html','/legal.css':'dashboard/legal.css','/':'dashboard/home.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/media-presentation.mjs':'dashboard/media-presentation.mjs','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
         if(!files[url.pathname])return send(404,{error:'No encontrado'});
         const path=files[url.pathname];res.writeHead(200,{'Content-Type':(path.endsWith('.js')||path.endsWith('.mjs'))?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
       }

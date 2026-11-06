@@ -74,3 +74,7 @@ Para detalles de autorización de cuentas, ver [docs/acceso-valentino.md](docs/a
 La consola privada `/#metaReview` está publicada para preparar los videos de App Review. Permite comprobar la relación WABA/número, listar las primeras 100 plantillas, enviar una plantilla aprobada de texto sin parámetros al destinatario de prueba configurado y crear una plantilla de utilidad. El estado `accepted` prueba la aceptación de Graph, no su entrega en WhatsApp.
 
 Ver [docs/meta-app-review.md](docs/meta-app-review.md) para configuración, videos y pendientes. No existe todavía un flujo completo multicliente de Embedded Signup. La consola no representa aprobación de Meta ni habilitación comercial.
+
+## Inicio público
+
+`/` presenta la plataforma de Austral con funciones, recorrido y ejemplos interactivos ilustrativos. No accede a datos del workspace ni envía mensajes. `/dashboard` conserva el acceso privado. Los enlaces antiguos `/#overview`, `/#metaReview` y demás vistas se redirigen en el navegador a `/dashboard` con el mismo fragmento. `/relevamiento` redirige a `/dashboard#onboarding`.

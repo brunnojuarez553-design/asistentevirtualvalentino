@@ -28,7 +28,8 @@ test('handler serverless retains private API/auth mode and static HTML',async t=
  await new Promise(r=>app.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>app.close(r)));
  const base='http://127.0.0.1:'+app.address().port;
  let res=await fetch(base+'/auth/mode');assert.equal(res.status,200);assert.equal((await res.json()).mode,'token');
- res=await fetch(base+'/');assert.equal(res.status,200);assert.match(await res.text(),/loginScreen/);
+ res=await fetch(base+'/');assert.equal(res.status,200);assert.match(await res.text(),/demo-question/);
+ res=await fetch(base+'/dashboard');assert.equal(res.status,200);assert.match(await res.text(),/loginScreen/);
  res=await fetch(base+'/api/services');assert.equal(res.status,401);
  res=await fetch(base+'/api/services',{headers:{Authorization:'Bearer test-token'}});
  assert.equal(res.status,200);assert.ok((await res.json()).services.length>0);
@@ -74,7 +75,7 @@ test('aplicación entrega CSS premium y redirige relevamiento al onboarding',asy
  assert.match(await css.text(),/AUSTRAL WEB STUDIO/);
  const redirect=await fetch(base+'/relevamiento',{redirect:'manual'});
  assert.equal(redirect.status,302);
- assert.equal(redirect.headers.get('location'),'/'+'#onboarding');
+ assert.equal(redirect.headers.get('location'),'/dashboard'+'#onboarding');
 });
 
 test('asset oficial del sitio en tarjetas de catálogo y CSS de logo circular',async()=>{
