@@ -85,3 +85,22 @@ test('asset oficial del sitio en tarjetas de catálogo y CSS de logo circular',a
  assert.match(css,/border-radius:50%/);
  assert.doesNotMatch(css,/\.vm-mark/);
 });
+
+test('el simulador conserva vehículo estructurado sin heredar datos de otro modelo',async t=>{
+ let state={config:null,conversations:[],alerts:[],audit:[],events:[]};
+ const store={load:async()=>structuredClone(state),save:async v=>{state=structuredClone(v)}};
+ const app=await createApp({DASHBOARD_TOKEN:'vehicle-test'},store);
+ await new Promise(r=>app.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>app.close(r)));
+ const base='http://127.0.0.1:'+app.address().port;
+ const send=async(text)=>{const r=await fetch(base+'/api/simulate',{method:'POST',
+  headers:{Authorization:'Bearer vehicle-test','Content-Type':'application/json'},
+  body:JSON.stringify({text,contact:'Cliente vehículo'})});
+  assert.equal(r.status,200);return r.json();};
+ let c=await send('Tengo una Toyota Hilux 2020 motor 2.8');
+ assert.equal(c.vehicle.model.toLowerCase(),'hilux');
+ assert.equal(c.vehicle.engine,'2.8');
+ c=await send('Ahora consulto por un Corolla');
+ assert.equal(c.vehicle.model.toLowerCase(),'corolla');
+ assert.equal(c.vehicle.year,'');
+ assert.equal(c.vehicle.engine,'');
+});
