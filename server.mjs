@@ -177,6 +177,19 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         const limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):100;
         return send(200,{...await normalizedInbox.detail(url.searchParams.get('id'),{limit}),source:'normalized_read_only'});
       }
+      if(url.pathname==='/api/meta/status'&&req.method==='GET'){
+        const checks={
+          webhookEnabled:env.META_WEBHOOKS_ENABLED==='true',
+          appSecretConfigured:Boolean(env.META_APP_SECRET),
+          verifyTokenConfigured:Boolean(env.META_VERIFY_TOKEN),
+          accessTokenConfigured:Boolean(env.META_ACCESS_TOKEN),
+          phoneNumberConfigured:Boolean(env.META_PHONE_NUMBER_ID),
+          wabaConfigured:Boolean(env.META_WABA_ID),
+          coexistenceVerified:env.META_COEXISTENCE_VERIFIED==='true',
+          manualTakeoverTested:env.META_MANUAL_TAKEOVER_TESTED==='true'
+        };
+        return send(200,{provider:'meta',checks,ready:Object.values(checks).every(Boolean),outboundEnabled:false,mode:'simulation'});
+      }
       if(url.pathname==='/api/ai/status'&&req.method==='GET'){
         return send(200,{enabled:!!provider,provider:provider?.provider||null,
           model:provider?.model||null,
