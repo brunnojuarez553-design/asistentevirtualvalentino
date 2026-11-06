@@ -8,6 +8,7 @@ import {same,signature,metaEvents} from './lib/security.mjs';
 import {Store} from './lib/store.mjs';
 import {NormalizedInbox} from './lib/normalized-inbox.mjs';
 import {NormalizedWriter} from './lib/normalized-writer.mjs';
+import {reconcileNormalized} from './lib/normalized-reconcile.mjs';
 import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 import {PanelAuth} from './lib/panel-auth.mjs';
@@ -41,7 +42,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(saved){
           // Mirror only after the authoritative workspace commit. Failures are visible,
           // never falsely treated as successful; replay is idempotent by message UUID.
-          if(normalizedWriter){try{await normalizedWriter.reconcile(data.conversations||[]);}catch(error){console.error('Normalized sync pending:',error.message);}}
+          if(normalizedWriter){try{await reconcileNormalized(normalizedWriter,data.conversations||[]);}catch(error){console.error('Normalized sync pending:',error.message);}}
           return result;
         }
       }
