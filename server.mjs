@@ -25,7 +25,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const audit=(d,action,id)=>d.audit.push({id:randomUUID(),at:new Date().toISOString(),action,conversationId:id});
   // Un único catálogo de origen: tablas vm_services en Supabase o workspace local en pruebas.
   const serviceRows=async d=>catalog?await catalog.list():(d.config?.services||defaults.services).map(fromEngineService);
-  const engineConfig=async d=>({...d.config,services:(await serviceRows(d)).map(toEngineService)});
+  const engineConfig=async d=>({...d.config,services:catalog?await catalog.listForEngine():(await serviceRows(d)).map(toEngineService)});
   const localServiceSave=async (d,body)=>{
     d.config ||= structuredClone(defaults);
     d.config.services ||= [];
