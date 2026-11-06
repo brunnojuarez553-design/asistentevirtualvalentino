@@ -9,7 +9,7 @@ const makeFetcher=({confirmed=true,role='owner',valid=true}={})=>async(url,optio
     {id:'61eeb1f8-2ceb-4243-9be9-9d9349c6964a',email:'valentino@example.com',
       email_confirmed_at:confirmed?'2026-10-31T00:00:00Z':null}:{}};
   if(path==='/rest/v1/vm_businesses')return {ok:true,status:200,json:async()=>[{id:'business-id'}]};
-  if(path==='/rest/v1/vm_staff')return {ok:true,status:200,json:async()=>role?[{role,active:true}]:[]};
+  if(path==='/rest/v1/vm_staff')return {ok:true,status:200,json:async()=>role?[{business_id:'11111111-1111-4111-8111-111111111111',role,active:true,business:{id:'11111111-1111-4111-8111-111111111111',display_name:'Empresa autorizada'}}]:[]};
   throw new Error('Unexpected resource '+path);
 };
 const mock=options=>new PanelAuth({url:'https://example.supabase.co',publishableKey:'public-value',
@@ -31,4 +31,9 @@ test('modo producción requiere autenticación individual',async()=>{
   await assert.rejects(()=>createApp({NODE_ENV:'production',STORAGE:'local'}),/Production requires/);
   await assert.rejects(()=>createApp({NODE_ENV:'production',STORAGE:'supabase',
      SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'fake-value'}),/Supabase Auth/);
+});
+test('a forged business header cannot select another business',async()=>{
+ await assert.rejects(()=>mock().authenticate('user-token-long-enough','22222222-2222-4222-8222-222222222222'),e=>e.status===403);
+ const user=await mock().authenticate('user-token-long-enough','11111111-1111-4111-8111-111111111111');
+ assert.equal(user.businessId,'11111111-1111-4111-8111-111111111111');
 });
