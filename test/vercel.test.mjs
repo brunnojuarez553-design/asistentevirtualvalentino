@@ -51,13 +51,13 @@ test('identidad visual global y todas las vistas están conectadas',async()=>{
    assert.match(html,new RegExp('data-view="'+view+'"'),'missing nav '+view);
    assert.match(js,new RegExp("'"+view+"'"),'missing state '+view);
  }
- const officialLogo='https://res.cloudinary.com/dvvuwigmy/image/upload/w_80,h_80,c_fill,f_auto,q_70/v1779059651/IMG_6676_jbholt.jpg';
- assert.equal(html.split(officialLogo).length-1,4,'logo oficial en login, sidebar, móvil y favicon');
- assert.match(html,/Soluciones Tecnológicas Automotrices/);
+ const officialLogo='/austral-logo.svg';
+ assert.equal(html.split(officialLogo).length-1,5,'logo de Austral en acceso, presentación, sidebar, móvil y favicon');
+ assert.match(html,/PLATAFORMA DE ATENCIÓN/);
  assert.doesNotMatch(html,/class="vm-mark"/);
  assert.doesNotMatch(html,/valentino-mark\.svg/);
  assert.match(html,/visual-system.css/);
- assert.match(css,/--red:#e8000f/);
+ assert.match(css,/--red:#f0a15e/);
  assert.match(css,/prefers-reduced-motion/);
  assert.doesNotMatch(html,/value="cornacchia.valentino92@gmail.com"/);
 });
@@ -71,7 +71,7 @@ test('aplicación entrega CSS premium y redirige relevamiento al onboarding',asy
  const css=await fetch(base+'/visual-system.css');
  assert.equal(css.status,200);
  assert.match(css.headers.get('content-type'),/text\/css/);
- assert.match(await css.text(),/VALENTINO MOTORS LG/);
+ assert.match(await css.text(),/AUSTRAL WEB STUDIO/);
  const redirect=await fetch(base+'/relevamiento',{redirect:'manual'});
  assert.equal(redirect.status,302);
  assert.equal(redirect.headers.get('location'),'/'+'#onboarding');
