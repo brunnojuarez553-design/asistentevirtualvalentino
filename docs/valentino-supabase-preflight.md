@@ -18,3 +18,6 @@ Consultas **solo lectura** confirmaron:
 7. Mantener desactivado el envío real de Meta hasta validar idempotencia, permisos y derivaciones.
 
 **No** se ejecutaron cambios de esquema ni importaciones de datos en el proyecto real durante esta inspección.
+
+## Limpieza autorizada — 2026-11-06
+El propietario confirmó que todas las conversaciones eran pruebas y autorizó eliminarlas. Se ejecutó en el proyecto verificado una actualización limitada a las cuatro colecciones del workspace: `conversations`, `events`, `alerts`, `audit`. Se conservó `config`. La consulta posterior mostró las cuatro colecciones vacías. Las tablas normalizadas ya estaban vacías en el diagnóstico previo. Esta operación no activó envíos de Meta ni alteró el catálogo de servicios.
