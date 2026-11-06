@@ -375,3 +375,41 @@ main{padding:17px 16px 25px}
 .voice-reference ul{padding:0;margin:0;list-style:none;display:grid;gap:7px}
 .voice-reference li{padding:9px 11px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(0,0,0,.14);font-size:12px;line-height:1.6;color:#d7dce4}
 .voice-reference li:before{content:"“";font:20px Georgia,serif;color:#e8000f;margin-right:5px;vertical-align:-3px}
+
+/* App Review: standalone cards need their own spacing, unlike nested IA settings. */
+#metaReview .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:stretch}
+#metaReview .settings-card{padding:26px;min-width:0;display:flex;flex-direction:column;gap:16px}
+#metaReview .settings-card>.eyebrow{margin:0;font-size:10px;line-height:1.6;letter-spacing:.12em;overflow-wrap:anywhere}
+#metaReview .settings-card h3{margin:0;font-size:20px;line-height:1.35;font-weight:650}
+#metaReview .settings-card p{margin:0;color:#aeb7c4;font-size:13px;line-height:1.75;overflow-wrap:anywhere}
+#metaReview .settings-card strong{color:#edf0f5}
+#metaReview .settings-card>button{align-self:flex-start}
+#metaReview .settings-card form{padding:0;border:0;display:grid;gap:18px;margin:2px 0 0}
+#metaReview .settings-card label{font-size:12px;line-height:1.6;color:#d0d6df;min-width:0}
+#metaReview input:not([type=checkbox]),#metaReview select,#metaReview textarea{display:block;width:100%;min-width:0;margin:8px 0 0;padding:13px 14px;border-radius:9px;border-color:#383e49;background:#0c0f14;font:400 13px/1.6 Outfit,system-ui,sans-serif}
+#metaReview textarea{min-height:120px}
+#metaReview .toggle{display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025);cursor:pointer}
+#metaReview .toggle input[type=checkbox]{width:17px;height:17px;min-width:17px;flex:0 0 17px;margin:2px 0 0;padding:0;accent-color:var(--red);cursor:pointer}
+#metaReview .toggle span{font-size:12px;line-height:1.65;color:#b8c1cf}
+#metaReview button{min-height:43px;padding:11px 17px;border-radius:9px;font:500 12px/1.5 Outfit,system-ui,sans-serif;white-space:normal}
+#metaReview button:disabled{cursor:not-allowed;opacity:.45}
+#metaReview .settings-card form>.primary{justify-self:start;margin:0}
+#metaReviewStatus{margin:0 0 22px;padding:14px 18px;border:1px solid #3c3430;background:rgba(225,174,96,.055);border-radius:10px;color:#d5bd97;font-size:13px;line-height:1.65}
+#metaReviewConnection,#metaReviewSendResult,#metaReviewCreateResult{padding:13px 15px;background:rgba(0,0,0,.17);border:1px solid var(--line);border-radius:9px;font-size:12px!important;line-height:1.7!important}
+#metaReview .settings-card>p:last-child{margin-top:auto}
+#metaReviewChecks{list-style:none;display:grid;gap:8px;padding:0;margin:0}
+#metaReviewChecks:empty{display:none}
+#metaReviewChecks li{font-size:12px;line-height:1.6;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02);color:#bdc7d5}
+#metaReview ol{display:grid;gap:14px;margin:0;padding-left:20px;color:#c0c9d6;font-size:13px;line-height:1.8}
+#metaReview a{color:#a9c9f5;text-underline-offset:3px;overflow-wrap:anywhere}
+#metaReview .section-heading{align-items:flex-start;gap:20px}
+#metaReview .section-heading>button{flex-shrink:0;align-self:center}
+@media(max-width:1100px){#metaReview .settings-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:640px){
+ #metaReview .settings-grid{gap:16px}
+ #metaReview .settings-card{padding:20px;gap:15px}
+ #metaReview .section-heading{flex-direction:column}
+ #metaReview .section-heading>button{align-self:stretch}
+ #metaReview .settings-card>button,#metaReview .settings-card form>.primary{align-self:stretch;justify-self:stretch;width:100%}
+ #metaReviewStatus{padding:13px 15px;font-size:12px}
+}
