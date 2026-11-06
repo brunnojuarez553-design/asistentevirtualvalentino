@@ -174,3 +174,27 @@ test('voz comercial Valentino: evita tuteo y preguntas repetidas con Corolla 2.0
  assert.doesNotMatch(resp.reply,/te ayudamos|nos confirmas|tu vehículo|tenés|podés/i);
  assert.match(resp.reason,/no respetó el estilo/);
 });
+
+
+test('un precio inventado en consulta general queda bloqueado',async()=>{
+ const r=await respond({text:'Necesito información de mantenimiento',config,
+  conversation:{state:'ia',messages:[],channel:'whatsapp'},
+  provider:{draft:async()=> 'El servicio cuesta USD 999.'}});
+ assert.doesNotMatch(r.reply,/999|USD/);
+ assert.match(r.reason,/importe/);
+});
+test('una garantía inventada por IA no se publica',async()=>{
+ const r=await respond({text:'Necesito información del servicio',config,
+  conversation:{state:'ia',messages:[],channel:'whatsapp'},
+  provider:{draft:async()=> 'Le damos garantía de 5 años.'}});
+ assert.doesNotMatch(r.reply,/5 años/);
+ assert.match(r.reason,/garantía/);
+});
+test('servicios pendientes de revisión no se cotizan automáticamente',()=>{
+ const pending=structuredClone(config);
+ pending.services[0].needs_technical_review=true;
+ assert.equal(quote(pending,'demo',vehicle),null);
+ pending.services[0].needs_technical_review=false;
+ pending.services[0].needs_legal_review=true;
+ assert.equal(quote(pending,'demo',vehicle),null);
+});
