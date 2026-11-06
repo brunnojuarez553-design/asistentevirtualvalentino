@@ -1,6 +1,6 @@
 # Valentino Motors LG · Asistente multicanal
 
-Panel de control para Valentino Motors, con catálogo comercial editable, bandeja de simulación para WhatsApp/Instagram y preparación para integraciones oficiales de Meta. **Aún no se envían mensajes reales** a WhatsApp, DMs ni comentarios de Instagram.
+Panel de control para Valentino Motors, con catálogo comercial editable, bandeja de simulación para WhatsApp/Instagram y preparación para integraciones oficiales de Meta. La atención automática sigue desactivada. La sección **Revisión de Meta** permite operaciones manuales reales con activos de prueba solo después de configurarla; no activa los canales de Valentino.
 
 - **Repo:** `brunnojuarez553-design/asistentevirtualvalentino`
 - **Rama en pruebas:** `feat/asistente-valentino`, PR #1 en borrador; la rama `main` conserva el relevamiento original
@@ -68,3 +68,9 @@ Para detalles de autorización de cuentas, ver [docs/acceso-valentino.md](docs/a
 - Ningún token, contraseña ni clave privada de Supabase o Meta en GitHub, frontend o logs.
 - El bucket de imágenes es público **solo para material comercial autorizado**; no subir fotografías personales ni documentación de clientes.
 - `META_WEBHOOKS_ENABLED=false` hasta contar con aprobación del cliente y permisos oficiales.
+
+## Revisión de la app de Meta
+
+La consola privada `/#metaReview` está publicada para preparar los videos de App Review. Permite comprobar la relación WABA/número, listar las primeras 100 plantillas, enviar una plantilla aprobada de texto sin parámetros al destinatario de prueba configurado y crear una plantilla de utilidad. El estado `accepted` prueba la aceptación de Graph, no su entrega en WhatsApp.
+
+Ver [docs/meta-app-review.md](docs/meta-app-review.md) para configuración, videos y pendientes. No existe todavía un flujo completo multicliente de Embedded Signup. La consola no representa aprobación de Meta ni habilitación comercial.

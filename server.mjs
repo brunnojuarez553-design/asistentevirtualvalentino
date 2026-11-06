@@ -14,8 +14,9 @@ import {createProvider} from './lib/provider.mjs';
 import {SupabaseCatalog,validateService,fromEngineService,toEngineService} from './lib/catalog.mjs';
 import {PanelAuth} from './lib/panel-auth.mjs';
 import {readBody,requireRawWebhook} from './lib/http-body.mjs';
+import {MetaReview} from './lib/meta-review.mjs';
 
-export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{})) {
+export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher}={}) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
   const authMode=env.AUTH_MODE || (env.NODE_ENV==='production'?'supabase':'token');
   if(env.NODE_ENV==='production' && (authMode!=='supabase'||env.STORAGE!=='supabase'))throw Error('Production requires Supabase Auth and Supabase storage');
@@ -23,6 +24,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     new PanelAuth({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,secretKey:env.SUPABASE_SERVICE_ROLE_KEY}):null;
   const defaults=JSON.parse(await readFile(new URL('./config/default.json',import.meta.url),'utf8'));
   const provider=createProvider(env);
+  const metaReview=new MetaReview(env,{fetcher:metaReviewFetcher});
   const normalizedWriter=env.NORMALIZED_WRITE_ENABLED==='true'?new NormalizedWriter({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const normalizedInbox=env.NORMALIZED_INBOX_ENABLED==='true'?new NormalizedInbox({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY,businessId:env.VM_BUSINESS_ID}):null;
   const loginAttempts=new Map();
@@ -139,7 +141,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(url.pathname==='/relevamiento'){
           res.writeHead(302,{Location:'/#onboarding','Cache-Control':'no-store'});return res.end();
         }
-        const files={'/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/media-presentation.mjs':'dashboard/media-presentation.mjs','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
+        const files={'/privacy':'dashboard/privacy.html','/terms':'dashboard/terms.html','/data-deletion':'dashboard/data-deletion.html','/legal.css':'dashboard/legal.css','/':'dashboard/index.html','/dashboard':'dashboard/index.html','/app.js':'dashboard/app.js','/media-presentation.mjs':'dashboard/media-presentation.mjs','/style.css':'dashboard/style.css','/visual-system.css':'dashboard/visual-system.css'};
         if(!files[url.pathname])return send(404,{error:'No encontrado'});
         const path=files[url.pathname];res.writeHead(200,{'Content-Type':(path.endsWith('.js')||path.endsWith('.mjs'))?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8'});return res.end(await readFile(new URL(path,import.meta.url)));
       }
@@ -189,6 +191,47 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
           manualTakeoverTested:env.META_MANUAL_TAKEOVER_TESTED==='true'
         };
         return send(200,{provider:'meta',checks,ready:Object.values(checks).every(Boolean),outboundEnabled:false,mode:'simulation'});
+      }
+      if(url.pathname.startsWith('/api/meta/review/')){
+        metaReview.authorize(req.panelUser);
+        const action=url.pathname.slice('/api/meta/review/'.length);
+        if(action==='status'&&req.method==='GET')return send(200,metaReview.status());
+        if(action==='templates'&&req.method==='GET')return send(200,await metaReview.templates());
+        if(req.method!=='POST')return send(405,{error:'Método no permitido'});
+        const reviewRaw=(await readBody(req,4096)).toString('utf8');
+        let body;try{body=JSON.parse(reviewRaw);}catch{return send(400,{error:'JSON inválido'});}
+        if(action==='connection')return send(200,await metaReview.connection());
+        if(!['send','template'].includes(action))return send(404,{error:'No encontrado'});
+        metaReview.ready();
+        if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId||''))
+          return send(400,{error:'Identificador de operación inválido'});
+        const key=req.panelUser.id+':'+body.requestId;
+        const reservationId=randomUUID();
+        // Persist intent before calling Graph. CAS retries never repeat the external operation.
+        const reservation=await mutate(d=>{
+          d.metaReviewOperations ||= [];
+          const old=d.metaReviewOperations.find(o=>o.key===key);
+          if(old)return old;
+          if(d.metaReviewOperations.some(o=>o.userId===req.panelUser.id&&Date.now()-Date.parse(o.at)<30000))
+            throw Object.assign(Error('Esperá 30 segundos antes de iniciar otra operación de revisión.'),{status:429});
+          const op={key,id:reservationId,userId:req.panelUser.id,action,at:new Date().toISOString(),state:'pending'};
+          d.metaReviewOperations.push(op);audit(d,'meta_review_'+action+'_requested');return op;
+        });
+        if(reservation.id!==reservationId){
+          if(reservation.state==='accepted')return send(200,{...reservation.result,replayed:true});
+          return send(409,{error:'Esta operación ya se inició. Revisá WhatsApp o la lista de plantillas antes de crear otra.'});
+        }
+        try{
+          const result=action==='send'?await metaReview.send(body):await metaReview.createTemplate(body);
+          await mutate(d=>{
+            const op=d.metaReviewOperations.find(o=>o.key===key);op.state='accepted';op.result=result;
+            audit(d,'meta_review_'+action+'_accepted');
+          });
+          return send(200,result);
+        }catch(error){
+          try{await mutate(d=>{const op=d.metaReviewOperations.find(o=>o.key===key);op.state='check_required';});}catch{}
+          throw error;
+        }
       }
       if(url.pathname==='/api/ai/status'&&req.method==='GET'){
         return send(200,{enabled:!!provider,provider:provider?.provider||null,

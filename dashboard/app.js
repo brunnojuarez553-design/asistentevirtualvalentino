@@ -29,7 +29,7 @@ $('#reply').onsubmit=async e=>{e.preventDefault();try{await api('conversation',{
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
 // Se inicia luego de registrar todas las interacciones.
-initPanel();
+
 
 /* =============================================================
    CATALOGO: edición segura mediante API autenticada del servidor.
@@ -188,7 +188,7 @@ $('#loginForm').onsubmit=async event=>{
 
 
 /* Navegación, indicadores y onboarding V1 */
-const views=['overview','inbox','catalog','config','onboarding','channels'];
+const views=['overview','inbox','catalog','config','onboarding','channels','metaReview'];
 function showView(view){
   const v=views.includes(view)?view:'overview';activeView=v;
   views.forEach(name=>{const section=document.getElementById(name);if(section)section.hidden=name!==v;});
@@ -201,6 +201,7 @@ function showView(view){
   const menu=$('#mobileMenu');if(menu)menu.setAttribute('aria-expanded','false');
   history.replaceState(null,'',location.pathname+location.search+'#'+v);
   if(v==='onboarding')updateOnboardingStep();
+  if(v==='metaReview')refreshMetaReview();
   window.scrollTo({top:0,behavior:'instant'});
 }
 function renderOverview(){
@@ -381,3 +382,43 @@ $('#regenerateDraft').onclick=async()=>{
   }catch(error){fail(error);if(typeof notify==='function')notify(error.message,'error');}
   finally{btn.textContent='Redactar borrador con Groq';btn.disabled=!aiStatus?.enabled||!selected;}
 };
+
+
+// App Review is separate from simulation and only available to approved operators.
+const metaCheckLabels={enabled:'Pruebas manuales habilitadas',testAssetsConfirmed:'Activos de prueba confirmados',tokenConfigured:'Token privado configurado',versionConfigured:'Versión de Graph configurada',wabaConfigured:'WABA de prueba configurada',phoneConfigured:'Número de prueba configurado',recipientConfigured:'Destinatario autorizado configurado',operatorsConfigured:'Operadores autorizados configurados'};
+let reviewTemplates=[];
+function reviewBusy(busy){for(const id of ['metaReviewConnect','metaReviewLoadTemplates','metaReviewSendButton','metaReviewCreateButton'])$('#'+id).disabled=busy;}
+async function refreshMetaReview(){
+ reviewBusy(true);
+ try{
+  const status=await api('meta/review/status');
+  $('#metaReviewStatus').textContent=status.configured?'Configuración completa. Comprobá la conexión real antes de grabar.':'Falta configuración privada. No se habilitaron las operaciones.';
+  $('#metaReviewChecks').replaceChildren(...Object.entries(status.checks).map(([key,ok])=>node('li',(ok?'✓ ':'Pendiente: ')+(metaCheckLabels[key]||key))));
+  $('#metaReviewRecipient').textContent=status.recipient||'Sin configurar';
+  reviewBusy(!status.configured);
+ }catch(e){$('#metaReviewStatus').textContent=e.message;}
+}
+$('#metaReviewRefresh').onclick=refreshMetaReview;
+$('#metaReviewConnect').onclick=async e=>{e.target.disabled=true;try{await api('meta/review/connection',{});$('#metaReviewConnection').textContent='Conexión verificada: el número pertenece a la WABA de prueba. Falta demostrar envío y recepción.';}catch(e){$('#metaReviewConnection').textContent=e.message;}finally{e.target.disabled=false;}};
+$('#metaReviewLoadTemplates').onclick=async e=>{e.target.disabled=true;try{
+ const d=await api('meta/review/templates');reviewTemplates=d.templates.filter(t=>t.sendable);
+ const select=$('#metaReviewTemplate');select.replaceChildren(new Option('Seleccioná una plantilla',''));
+ reviewTemplates.forEach((t,i)=>select.add(new Option(t.name+' · '+t.language,String(i))));
+ $('#metaReviewSendResult').textContent=reviewTemplates.length?'Plantillas aprobadas consultadas en Meta.'+(d.hasMore?' Se muestran los primeros 100 resultados.':''):'No hay plantillas aprobadas de texto sin variables en los primeros 100 resultados.';
+ }catch(e){$('#metaReviewSendResult').textContent=e.message;}finally{e.target.disabled=false;}};
+async function reviewSubmit(event,action,payload,resultId){
+ event.preventDefault();const button=event.submitter;button.disabled=true;
+ try{
+  const result=await api('meta/review/'+action,{...payload,confirm:true,requestId:crypto.randomUUID()});
+  $('#'+resultId).textContent=result.message+' '+(result.messageId?'ID de mensaje: '+result.messageId:'ID de plantilla: '+result.id+' · Estado: '+result.status);
+ }catch(e){$('#'+resultId).textContent=e.message+' No reintentes sin verificar antes el resultado en Meta o WhatsApp.';}
+ finally{button.disabled=false;}
+}
+$('#metaReviewSend').onsubmit=async e=>{
+ const template=reviewTemplates[Number($('#metaReviewTemplate').value)];
+ if(!template||$('#metaReviewTemplate').value===''){e.preventDefault();return;}
+ await reviewSubmit(e,'send',{name:template.name,language:template.language},'metaReviewSendResult');
+};
+$('#metaReviewCreate').onsubmit=e=>reviewSubmit(e,'template',{name:$('#metaReviewName').value,language:$('#metaReviewLanguage').value,text:$('#metaReviewBody').value},'metaReviewCreateResult');
+
+initPanel();
