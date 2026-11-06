@@ -73,11 +73,17 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     audit(d,previous?'servicio_editado':'servicio_creado');
     return {...record,...parsed,id:parsed.code};
   };
-  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId}) {
+  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId,outboundHuman=false}) {
     if(d.events.includes(id))return {duplicate:true};
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
+    if(outboundHuman){
+      c.messages.push({id,role:'equipo',text,at:new Date().toISOString(),delivery:'enviado_desde_whatsapp_business'});
+      c.state='humano';c.draft=null;c.reason='Valentino respondió desde WhatsApp Business. IA pausada hasta reactivación manual.';
+      if(!d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason,at:new Date().toISOString(),resolved:false});
+      d.events.push(id);audit(d,'intervencion_whatsapp_business',c.id);return c;
+    }
     const detected=knownVehicleDetails(text,c.messages||[],vehicle||c.vehicle||{});
     c.vehicle={make:detected.brand,model:detected.model,year:detected.year,engine:detected.engine};
     let mediaAnalysis=null;
