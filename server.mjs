@@ -62,15 +62,17 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     audit(d,previous?'servicio_editado':'servicio_creado');
     return {...record,...parsed,id:parsed.code};
   };
-  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId}) {
+  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType}) {
     if(d.events.includes(id))return {duplicate:true};
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
     const detected=knownVehicleDetails(text,c.messages||[],vehicle||c.vehicle||{});
     c.vehicle={make:detected.brand,model:detected.model,year:detected.year,engine:detected.engine};
-    c.messages.push({id,role:'cliente',text,at:new Date().toISOString()});
-    const result=await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
+    c.messages.push({id,role:'cliente',text,at:new Date().toISOString(),...(mediaType?{mediaType}: {})});
+    const result=mediaType
+      ?{state:'revision',reply:null,reason:'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
+      :await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
     if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
