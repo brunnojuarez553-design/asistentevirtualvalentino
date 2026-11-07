@@ -1,3 +1,4 @@
+import {MetaOnboarding} from './lib/meta-onboarding.mjs';
 import http from 'node:http';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {TenantDirectory,businessDefaults} from './lib/tenants.mjs';
@@ -34,6 +35,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const baseCatalog=env.STORAGE==='supabase' ? new SupabaseCatalog({url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}) : null;
   const directory=tenantDirectory||(env.STORAGE==='supabase'?new TenantDirectory(env):null);
   const googleCalendar=new GoogleCalendar(env,directory,{fetcher:googleFetcher});
+  const metaOnboarding=new MetaOnboarding(env,directory);
   const requestScope=new AsyncLocalStorage();
   const scope=()=>requestScope.getStore()||{};
   const activeStore=()=>scope().store||store;
@@ -130,6 +132,9 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     const url=new URL(req.url,'http://localhost');
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'");
+    if(url.pathname==='/dashboard'&&metaOnboarding.configured()){
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://www.facebook.com https://graph.facebook.com; frame-src https://www.facebook.com; img-src 'self' https: data:; frame-ancestors 'none'; base-uri 'none'");
+    }
     const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
     try {
       if(url.pathname==='/health')return send(200,{ok:true,mode:'simulation',outbound:false});
@@ -193,6 +198,20 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}` &&
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
+      }
+      if(url.pathname.startsWith('/api/whatsapp-connect/')){
+        if(!directory||!req.panelUser)return send(403,{error:'Seleccioná una empresa autorizada'});
+        const action=url.pathname.split('/').at(-1);
+        if(action==='status'&&req.method==='GET')return send(200,await metaOnboarding.status(req.panelUser));
+        if(req.method!=='POST')return send(405,{error:'Método no permitido'});
+        if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'La conexión requiere propietario o administrador'});
+        if(action==='start')return send(200,await metaOnboarding.start(req.panelUser));
+        if(action==='finish'){
+          let body;
+          try{body=JSON.parse((await readBody(req,4096)).toString('utf8'));}catch{return send(400,{error:'Solicitud inválida'});}
+          return send(200,await metaOnboarding.finish(req.panelUser,body));
+        }
+        return send(404,{error:'Acción desconocida'});
       }
       if(url.pathname.startsWith('/api/calendar/')){
         if(!scope().business||!req.panelUser)throw Object.assign(Error('La agenda requiere una empresa autorizada'),{status:503});

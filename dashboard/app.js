@@ -7,7 +7,7 @@ const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instag
 async function api(path,body){const generation=businessGeneration;const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(activeBusinessId?{'X-Business-Id':activeBusinessId}:{}),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(generation!==businessGeneration)throw Error('La empresa activa cambió; actualizá la vista.');if(!r.ok)throw Error(d.error);return d;}
 function node(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e;}
 function fail(e){$('#error').textContent=e.message;}
-async function refresh(){try{await refreshBusinesses();const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
+async function refresh(){try{await refreshBusinesses();const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;if(activeView==='channels'&&token)refreshWhatsAppConnection();catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
  const businessName=data.config?.business?.name||'Negocio activo';
  $('#activeBusinessName').textContent=businessName;
@@ -208,6 +208,7 @@ function showView(view){
   if(v==='metaReview')refreshMetaReview();
   if(v==='calendar')refreshCalendar().catch(fail);
   if(v==='team')refreshTeam().catch(fail);
+  if(v==='channels'&&token)refreshWhatsAppConnection();
   window.scrollTo({top:0,behavior:'instant'});
 }
 function renderOverview(){
@@ -457,4 +458,115 @@ $('#bookingForm').onsubmit=async e=>{e.preventDefault();e.submitter.disabled=tru
 async function refreshTeam(){const result=await api('team');const list=$('#teamList');list.replaceChildren();for(const member of result.members||[])list.append(node('p',member.email+' · '+member.role+(member.active?'':' · Inactivo')));$('#teamForm').querySelectorAll('input,select,button').forEach(el=>el.disabled=!mayManage());}
 $('#teamForm').onsubmit=async e=>{e.preventDefault();try{await api('team',{action:'add',...Object.fromEntries(new FormData(e.target))});await refreshTeam();}catch(e){fail(e);}};
 $('#businessForm').onsubmit=async e=>{e.preventDefault();e.submitter.disabled=true;try{await api('businesses',Object.fromEntries(new FormData(e.target)));e.target.reset();await refresh();}catch(e){fail(e);}finally{e.submitter.disabled=false;}};
+const waStatus = $('#waConnectStatus');
+const waButton = $('#waConnect');
+let metaSdk;
+let cancelMetaSignup;
+
+async function refreshWhatsAppConnection(){
+  cancelMetaSignup?.();
+  waButton.disabled = true;
+  waButton.textContent = 'Preparar conexión';
+  waButton.onclick = prepareWhatsAppConnection;
+  waStatus.textContent = 'Consultando conexión…';
+  try {
+    const result = await api('whatsapp-connect/status');
+    waStatus.textContent = result.connected
+      ? 'Cuenta vinculada' + (result.phone ? ' · '+result.phone : '') + '. La recepción de mensajes requiere activar el canal.'
+      : result.configured ? 'Listo para iniciar el registro oficial de Meta.' : 'La conexión oficial de Meta está pendiente de configuración.';
+    waButton.disabled = !result.configured || !result.canConnect;
+  } catch(error) {
+    waStatus.textContent = error.message;
+  }
+}
+
+function loadMetaSdk(){
+  if(window.FB)return Promise.resolve();
+  if(!metaSdk)metaSdk = new Promise((resolve,reject)=>{
+    const script = document.createElement('script');
+    script.src = 'https://connect.facebook.net/es_LA/sdk.js';
+    script.async = true;
+    script.onload = ()=>window.FB ? resolve() : reject(Error('No se pudo cargar Meta.'));
+    script.onerror = ()=>reject(Error('No se pudo cargar Meta.'));
+    document.head.append(script);
+  }).catch(error=>{metaSdk=undefined;throw error;});
+  return metaSdk;
+}
+
+async function prepareWhatsAppConnection(){
+  waButton.disabled = true;
+  try {
+    const session = await api('whatsapp-connect/start',{});
+    const generation = businessGeneration;
+    await loadMetaSdk();
+    if(generation!==businessGeneration)return;
+    window.FB.init({appId:session.appId,version:session.version,xfbml:false});
+    waStatus.textContent = 'La ventana de Meta se abre al continuar.';
+    waButton.textContent = 'Continuar con Meta';
+    waButton.onclick = ()=>openWhatsAppSignup(session,generation);
+    waButton.disabled = false;
+  } catch(error) {
+    waStatus.textContent = error.message;
+    waButton.disabled = false;
+  }
+}
+
+function openWhatsAppSignup(session,generation){
+  if(generation!==businessGeneration)return;
+  waButton.disabled = true;
+  let code, assets, completed = false, timer;
+  function cleanup(){
+    completed = true;
+    clearTimeout(timer);
+    window.removeEventListener('message',receive);
+    cancelMetaSignup = undefined;
+  }
+  function retry(message){
+    cleanup();
+    waStatus.textContent = message;
+    waButton.textContent = 'Preparar conexión';
+    waButton.onclick = prepareWhatsAppConnection;
+    waButton.disabled = false;
+  }
+  async function finish(){
+    if(completed||!code||!assets)return;
+    cleanup();
+    if(generation!==businessGeneration)return;
+    waStatus.textContent = 'Verificando el número con Meta…';
+    try {
+      await api('whatsapp-connect/finish',{state:session.state,code,...assets});
+      await refreshWhatsAppConnection();
+    } catch(error) {
+      if(generation===businessGeneration)retry(error.message);
+    }
+  }
+  function receive(event){
+    if(!['https://www.facebook.com','https://web.facebook.com'].includes(event.origin))return;
+    let message;
+    try { message = typeof event.data==='string' ? JSON.parse(event.data) : event.data; }
+    catch { return; }
+    if(message?.type!=='WA_EMBEDDED_SIGNUP')return;
+    if(['FINISH','FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'].includes(message.event)){
+      assets = {wabaId:message.data?.waba_id,phoneId:message.data?.phone_number_id};
+      finish();
+    }
+    if(['CANCEL','ERROR'].includes(message.event))retry('La autorización de Meta quedó incompleta.');
+  }
+  cancelMetaSignup = cleanup;
+  window.addEventListener('message',receive);
+  timer = setTimeout(()=>retry('La autorización venció. Iniciá una conexión nueva.'),600000);
+  try {
+    window.FB.login(response=>{
+      if(completed)return;
+      code = response?.authResponse?.code;
+      if(!code)return retry('Meta no devolvió una autorización.');
+      finish();
+    },{
+      config_id:session.configId,response_type:'code',override_default_response_type:true,
+      extras:{featureType:'whatsapp_business_app_onboarding',sessionInfoVersion:'3'}
+    });
+  } catch {
+    retry('No se pudo abrir la ventana de Meta.');
+  }
+}
 initPanel();
