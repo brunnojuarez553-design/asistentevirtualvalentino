@@ -1,3 +1,4 @@
+import {MetaChannel} from './lib/meta-channel.mjs';
 import {MetaOnboarding} from './lib/meta-onboarding.mjs';
 import http from 'node:http';
 import {AsyncLocalStorage} from 'node:async_hooks';
@@ -20,7 +21,7 @@ import {PanelAuth} from './lib/panel-auth.mjs';
 import {readBody,requireRawWebhook} from './lib/http-body.mjs';
 import {MetaReview} from './lib/meta-review.mjs';
 
-export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher,tenantDirectory,storeFactory,googleFetcher}={}) {
+export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher,tenantDirectory,storeFactory,googleFetcher,metaChannelFetcher}={}) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
   const authMode=env.AUTH_MODE || (env.NODE_ENV==='production'?'supabase':'token');
   if(env.NODE_ENV==='production' && (authMode!=='supabase'||env.STORAGE!=='supabase'))throw Error('Production requires Supabase Auth and Supabase storage');
@@ -36,6 +37,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const directory=tenantDirectory||(env.STORAGE==='supabase'?new TenantDirectory(env):null);
   const googleCalendar=new GoogleCalendar(env,directory,{fetcher:googleFetcher});
   const metaOnboarding=new MetaOnboarding(env,directory);
+  const metaChannel=new MetaChannel(env,directory,metaChannelFetcher);
   const requestScope=new AsyncLocalStorage();
   const scope=()=>requestScope.getStore()||{};
   const activeStore=()=>scope().store||store;
@@ -101,14 +103,19 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     audit(d,previous?'servicio_editado':'servicio_creado');
     return {...record,...parsed,id:parsed.code};
   };
-  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId,outboundHuman=false}) {
+  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId,outboundHuman=false,historical=false,at}) {
     if(d.events.includes(id))return {duplicate:true};
     let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
     if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
+    if(historical){
+      c.messages.push({id,role:outboundHuman?'equipo':'cliente',text,at:at||new Date().toISOString(),delivery:'historial_whatsapp'});
+      c.messages.sort((a,b)=>a.at.localeCompare(b.at));c.state='humano';c.draft=null;
+      d.events.push(id);return c;
+    }
     if(outboundHuman){
       c.messages.push({id,role:'equipo',text,at:new Date().toISOString(),delivery:'enviado_desde_whatsapp_business'});
-      c.state='humano';c.draft=null;c.reason='Valentino respondió desde WhatsApp Business. IA pausada hasta reactivación manual.';
+      c.state='humano';c.draft=null;c.reason='El equipo respondió desde WhatsApp Business. IA pausada hasta reactivación manual.';
       if(!d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason,at:new Date().toISOString(),resolved:false});
       d.events.push(id);audit(d,'intervencion_whatsapp_business',c.id);return c;
     }
@@ -124,7 +131,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       ?{state:'revision',reply:null,reason:mediaAnalysis?'Archivo ('+mediaType+') interpretado automáticamente; revisión humana obligatoria.':'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
       :await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
-    if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:'simulada'});
+    if(result.reply)c.messages.push({id:randomUUID(),role:'asistente',text:result.reply,at:new Date().toISOString(),delivery:channel==='simulador'?'simulada':'borrador_no_enviado'});
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
     d.events.push(id);audit(d,'mensaje_recibido',c.id);return c;
   }
@@ -205,6 +212,11 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(action==='status'&&req.method==='GET')return send(200,await metaOnboarding.status(req.panelUser));
         if(req.method!=='POST')return send(405,{error:'Método no permitido'});
         if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'La conexión requiere propietario o administrador'});
+        if(action==='prepare')return send(200,await metaChannel.prepare(req.panelUser.businessId));
+        if(action==='test-send'){
+          const input=JSON.parse((await readBody(req,4096)).toString('utf8'));
+          return send(200,await metaChannel.sendTest(req.panelUser.businessId,input));
+        }
         if(action==='start')return send(200,await metaOnboarding.start(req.panelUser));
         if(action==='finish'){
           let body;
@@ -342,16 +354,29 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       }
       if(url.pathname==='/webhooks/meta'&&env.META_WEBHOOKS_ENABLED!=='true')return send(503,{error:'Webhooks desactivados'});
       if(url.pathname==='/webhooks/meta')requireRawWebhook(req);
-      const raw=(await readBody(req,65536)).toString('utf8');
+      const raw=(await readBody(req,url.pathname==='/webhooks/meta'?1048576:65536)).toString('utf8');
       if(url.pathname==='/webhooks/meta'&&!signature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return send(403,{error:'Firma inválida'});
       let body;try{body=JSON.parse(raw);}catch{return send(400,{error:'JSON inválido'});}
       if(url.pathname==='/webhooks/meta') {
         if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});
+        if(directory)await metaChannel.receive(body);
         const events=metaEvents(body);
+        const grouped=new Map();
         for(const e of events){
           if(typeof e.text!=='string'||e.text.length>4000)continue;
-          if(directory)selectBusiness(await directory.channelBusiness(e.externalAccountId,e.channel==='whatsapp'?'whatsapp':e.channel==='instagram_comentario'?'instagram_comment':'instagram_dm'));
-          await mutate(d=>incoming(d,e));
+          const key=directory?e.channel+':'+e.externalAccountId:'local';
+          if(!grouped.has(key))grouped.set(key,[]);
+          grouped.get(key).push(e);
+        }
+        for(const batch of grouped.values()){
+          const e=batch[0];
+          if(directory){
+            let business;
+            try{business=await directory.channelBusiness(e.externalAccountId,e.channel==='whatsapp'?'whatsapp':e.channel==='instagram_comentario'?'instagram_comment':'instagram_dm');}
+            catch(error){if(error.status===409)continue;throw error;}
+            selectBusiness(business);
+          }
+          await mutate(async d=>{for(const event of batch)await incoming(d,event);});
         }
         return send(200,{received:true,outbound:false});
       }
@@ -431,3 +456,4 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   return env.SERVERLESS==='true'?scopedHandler:http.createServer(scopedHandler);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){const app=await createApp();app.listen(Number(process.env.PORT||3000),'127.0.0.1',()=>console.log(`Valentino: http://127.0.0.1:${process.env.PORT||3000} · simulación, sin envíos reales`));}
+
