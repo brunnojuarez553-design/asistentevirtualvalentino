@@ -99,3 +99,44 @@ footer .footer-brand{margin-left:auto;color:#7d8da4}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .tenant-picker{display:grid;gap:8px;margin:16px 20px;color:var(--muted,#a7abb4);font-size:12px}.tenant-picker select{width:100%;min-width:0;padding:10px;background:#10141b;color:#fff;border:1px solid #333943;border-radius:10px}#calendar form,#team form{display:grid;gap:16px;margin-top:24px}#calendar label,#team label{display:grid;gap:8px}#bookingList .item{margin-top:12px}#calendar .toggle{display:flex;align-items:center}#calendar .toggle input{width:auto}
+
+/* Channel connection: clear hierarchy, comfortable spacing and responsive action. */
+#channels .channels-heading{margin:0 0 26px;align-items:center}
+#channels .channels-heading .muted{font-size:14px;line-height:1.7}
+#channels .channels-heading .mini-pill{font-size:11px;padding:9px 12px;letter-spacing:.04em}
+#channels .whatsapp-connect-card{position:relative;padding:30px 32px 0;overflow:hidden;margin-bottom:36px;border-color:rgba(240,161,94,.22);background:radial-gradient(ellipse at 0 0,rgba(240,161,94,.07),transparent 65%),linear-gradient(135deg,#181e28,#10151e)}
+#channels .wa-connect-intro{display:flex;align-items:flex-start;gap:20px;max-width:850px}
+#channels .wa-connect-mark{display:grid;place-items:center;flex:0 0 54px;width:54px;height:54px;border-radius:16px;background:rgba(240,161,94,.09);border:1px solid rgba(240,161,94,.22);color:#f0b27d}
+#channels .wa-connect-mark svg{width:29px;height:29px}
+#channels .wa-connect-label{font-size:11px;line-height:1.5;font-weight:600;letter-spacing:.1em;color:#c8a17f;margin:1px 0 9px}
+#channels #waConnectTitle{font-size:24px;line-height:1.25;letter-spacing:-.65px;margin:0 0 12px;font-weight:600}
+#channels .wa-connect-description{font-size:15px;line-height:1.75;color:#a6b1c2;margin:0;max-width:730px}
+#channels .wa-connect-bottom{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:26px 0 22px;padding:20px 22px;border:1px solid #ffffff0e;border-radius:13px;background:#080c1355}
+#channels .wa-connect-feedback{min-width:0}
+#channels .wa-feedback-label{font-size:10px;line-height:1.5;font-weight:600;letter-spacing:.1em;color:#8290a5}
+#channels #waConnectStatus{font-size:14px;line-height:1.6;color:#d7deea;margin:6px 0 0;overflow-wrap:anywhere}
+#channels .wa-connect-button{flex-shrink:0;min-height:48px;min-width:190px;padding:13px 24px;font-size:14px;border-radius:12px;cursor:pointer}
+#channels .wa-connect-button:focus-visible{outline:2px solid #f0a15e;outline-offset:4px}
+#channels .wa-connect-note{display:flex;align-items:center;gap:10px;border-top:1px solid #ffffff0c;margin:0 -32px;padding:16px 32px;background:#080c1329;color:#8492a7;font-size:12px;line-height:1.6}
+#channels .wa-connect-note .ico{width:16px;height:16px;flex:none;color:#bea181}
+#channels .channels-list-heading{margin:0 0 18px}
+#channels .channels-list-heading h3{font-size:18px;font-weight:550;letter-spacing:-.3px;margin:0 0 7px}
+#channels .channels-list-heading p{font-size:14px;color:#8e9cb0;line-height:1.6;margin:0}
+#channels .channel-card{padding:26px}
+#channels .channel-card h3{font-size:18px;line-height:1.4}
+#channels .channel-card>p{font-size:14px;line-height:1.75}
+#channels .channel-rule{font-size:12px;line-height:1.6}
+#channels .channel-footer{margin-top:24px}
+#channels .channel-footer p{font-size:14px;line-height:1.7}
+@media(max-width:760px){
+#channels .channels-heading{align-items:flex-start;gap:14px}
+#channels .whatsapp-connect-card{padding:24px 20px 0}
+#channels .wa-connect-intro{gap:14px}
+#channels .wa-connect-mark{width:44px;height:44px;flex-basis:44px;border-radius:13px}
+#channels #waConnectTitle{font-size:21px}
+#channels .wa-connect-description{font-size:14px}
+#channels .wa-connect-bottom{flex-direction:column;align-items:stretch;gap:18px;padding:18px;margin-top:22px}
+#channels .wa-connect-button{width:100%;min-width:0}
+#channels .wa-connect-note{margin:0 -20px;padding:16px 20px;align-items:flex-start}
+}
+@media(max-width:420px){#channels .wa-connect-intro{flex-direction:column}#channels .wa-connect-label{margin-top:2px}}
