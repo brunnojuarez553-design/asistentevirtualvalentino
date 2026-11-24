@@ -47,3 +47,10 @@ test('a number outside the authorized WABA is never stored',async()=>{
   await assert.rejects(service.finish(user,{state,code:'test-code',wabaId:'66666',phoneId:'77777'}),{status:403});
   assert.equal(saved.length,0);
 });
+
+
+ test('account-only completion discovers exactly one authorized phone',async()=>{
+ const {service,saved}=fixture();const {state}=await service.start(user);
+ await service.finish(user,{state,code:'test-code',wabaId:'66666'});
+ assert.equal(saved[0].config.phoneId,'55555');
+ });
