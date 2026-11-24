@@ -17,7 +17,7 @@ function render(){
  if(!filtered.length)list.append(node('p','Todavía no hay conversaciones en esta vista.','muted'));
  for(const c of filtered){const b=node('button','','item'+(c.id===selected?' selected':''));b.append(node('strong',c.contact),node('span',labels[c.state],'badge '+c.state),node('small',(channelLabels[c.channel]||c.channel)+' · '+(c.messages.at(-1)?.text.slice(0,90)||'')));b.onclick=()=>{selected=c.id;render();};list.append(b);}
  const c=data.conversations.find(c=>c.id===selected);renderAiStatus(!!c);$('#contact').textContent=c?.contact||'Probemos el asistente';$('#channel').textContent=c?(channelLabels[c.channel]||c.channel)+' · Sin envíos externos':'Una consulta simulada, una respuesta segura.';const simChannel=$('#simulationChannel');if(c)simChannel.value=['whatsapp','instagram','instagram_comentario'].includes(c.channel)?c.channel:'whatsapp';simChannel.disabled=!!c;$('#state').value=c?.state||'ia';$('#state').disabled=!c;$('#reply').hidden=!c;$('#reason').textContent=c?.reason||'';
- const messages=$('#messages');messages.replaceChildren();if(!c)messages.append(node('div','Tu bandeja está lista. Escribí una consulta para probar el recorrido.','empty'));for(const m of c?.messages||[]){const el=node('article','','message '+(m.role==='cliente'?'customer':'team'));el.append(node('small',m.role==='cliente'?'CLIENTE':m.role==='equipo'?'EQUIPO · SIMULADO':'ASISTENTE · SIMULADO'),node('p',m.text));const media=mediaPresentation(m);if(media)el.append(node('small',media.type+' · '+media.status,'muted'));messages.append(el);}messages.scrollTop=messages.scrollHeight;$('#replyText').value=c?.draft||'';
+ const messages=$('#messages');messages.replaceChildren();if(!c)messages.append(node('div','Tu bandeja está lista. Escribí una consulta para probar el recorrido.','empty'));for(const m of c?.messages||[]){const el=node('article','','message '+(m.role==='cliente'?'customer':'team'));el.append(node('small',m.role==='cliente'?'CLIENTE':m.delivery==='historial_whatsapp'?'EQUIPO · HISTORIAL DE WHATSAPP':m.delivery==='enviado_desde_whatsapp_business'?'EQUIPO · WHATSAPP BUSINESS':m.delivery==='borrador_no_enviado'?'ASISTENTE · BORRADOR SIN ENVIAR':m.role==='equipo'?'EQUIPO · SIMULADO':'ASISTENTE · SIMULADO'),node('p',m.text));const media=mediaPresentation(m);if(media)el.append(node('small',media.type+' · '+media.status,'muted'));messages.append(el);}messages.scrollTop=messages.scrollHeight;$('#replyText').value=c?.draft||'';
  const alerts=$('#alerts');alerts.replaceChildren();for(const a of data.alerts.filter(a=>!a.resolved).slice(0,30)){const b=node('button',a.text,'alert');b.onclick=()=>{selected=a.conversationId;render();};alerts.append(b);}if(!alerts.children.length)alerts.append(node('p','Sin alertas pendientes.','muted'));
  const service=$('#service');const prev=service.value;service.replaceChildren(new Option('Elegir servicio aprobado',''));for(const s of data.config.services.filter(s=>s.approved===true))service.add(new Option(s.name,s.id));service.value=prev;
  renderOverview();
@@ -471,10 +471,28 @@ async function refreshWhatsAppConnection(){
   waStatus.textContent = 'Consultando conexión…';
   try {
     const result = await api('whatsapp-connect/status');
+    const channelCard=document.querySelector('#channels .channel-card .channel-state');
+    if(channelCard)channelCard.textContent=result.receivingEnabled?'RECEPCIÓN HABILITADA':result.connected?'AUTORIZADO · POR VERIFICAR':'SIN CONECTAR';
+    document.querySelector('#waTestForm')?.remove();
+    if(result.receivingEnabled && result.syncRequested && ['owner','admin'].includes(data?.role)){
+      const form=document.createElement('form');form.id='waTestForm';form.className='wa-test-form';
+      const label=document.createElement('label');label.className='toggle';
+      const check=document.createElement('input');check.type='checkbox';check.required=true;
+      const copy=document.createElement('span');copy.textContent='Autorizo un mensaje de prueba al destinatario configurado terminado en '+result.testRecipientSuffix+'.';
+      label.append(check,copy);const button=document.createElement('button');button.type='submit';button.textContent='Enviar mensaje de prueba';
+      const feedback=document.createElement('p');feedback.setAttribute('role','status');
+      form.append(label,button,feedback);document.querySelector('.wa-connect-note').before(form);
+      const requestId=crypto.randomUUID();
+      form.onsubmit=async event=>{event.preventDefault();button.disabled=true;try{const sent=await api('whatsapp-connect/test-send',{confirm:check.checked,requestId});feedback.textContent='Meta aceptó el mensaje. Comprobá su recepción en WhatsApp. ID: '+sent.messageId;}catch(error){feedback.textContent=error.message+' No reintentes sin comprobar el resultado.';}};
+    }
     waStatus.textContent = result.connected
-      ? 'Cuenta vinculada' + (result.phone ? ' · '+result.phone : '') + '. La recepción de mensajes requiere activar el canal.'
+      ? 'Cuenta autorizada' + (result.phone ? ' · '+result.phone : '') + (result.receivingEnabled ? '. Recepción habilitada; respuestas automáticas desactivadas.' : '. Falta verificar coexistencia y preparar la recepción.')
       : result.configured ? 'Listo para iniciar el registro oficial de Meta.' : 'La conexión oficial de Meta está pendiente de configuración.';
     waButton.disabled = !result.configured || !result.canConnect;
+    if(result.connected && !result.syncRequested && ['owner','admin'].includes(data?.role)){
+      waButton.textContent='Verificar y sincronizar';waButton.disabled=false;
+      waButton.onclick=async()=>{waButton.disabled=true;try{await api('whatsapp-connect/prepare',{});await refreshWhatsAppConnection();}catch(error){waStatus.textContent=error.message;waButton.disabled=false;}};
+    }
   } catch(error) {
     waStatus.textContent = error.message;
   }
@@ -570,3 +588,4 @@ function openWhatsAppSignup(session,generation){
   }
 }
 initPanel();
+
