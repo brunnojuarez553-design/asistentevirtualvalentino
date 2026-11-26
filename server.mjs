@@ -226,6 +226,17 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Instagram requiere propietario o administrador'});
         if(action==='connect'){const r=await instagram.start(req.panelUser);res.setHeader('Set-Cookie',r.cookie);return send(200,{url:r.url});}
         if(action==='prepare')return send(200,await instagram.prepare(req.panelUser));
+        if(action==='reply'){
+          let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
+          const snapshot=await activeStore().load(),conversation=snapshot.conversations.find(c=>c.id===body.id);
+          if(!conversation)return send(404,{error:'Conversación inexistente'});
+          const result=await instagram.sendReply(req.panelUser,conversation,body.text);
+          await mutate(d=>{const c=d.conversations.find(c=>c.id===body.id);if(!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
+            if(!c.messages.some(m=>m.id===result.id))c.messages.push({...result,role:'equipo'});
+            c.draft=null;c.state='humano';c.reason='Respuesta aceptada por Meta. Atención a cargo del equipo.';audit(d,'respuesta_instagram_aceptada',c.id);
+          });
+          return send(200,{accepted:true,externalId:result.externalId});
+        }
         if(action==='rules'){let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}return send(200,await instagram.saveRules(req.panelUser,body));}
         return send(404,{error:'Acción desconocida'});
       }
@@ -400,7 +411,13 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
             selectBusiness(business);
           }
           const igRules=directory&&e.channel!=='whatsapp'?(await instagram.connection(scope().business.id))?.config?.rules:null;
-          await mutate(async d=>{for(const event of batch)await incoming(d,{...event,...(igRules?{instagramSelection:selectInstagramEvent(event,igRules)}:{})});});
+          await mutate(async d=>{for(const event of batch){
+            const c=await incoming(d,{...event,...(igRules?{instagramSelection:selectInstagramEvent(event,igRules)}:{})});
+            if(!c.duplicate&&['instagram','instagram_comentario'].includes(event.channel)&&!event.outboundHuman){
+              // Only the signed webhook path can establish an outbound target.
+              c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:String(event.contact),commentId:event.threadKey?.replace(/^ig-comment:/,''),at:event.at||null};
+            }
+          }});
         }
         return send(200,{received:true,outbound:false});
       }
