@@ -45,3 +45,60 @@ test('Instagram callback rejects a removed administrator and ambiguous accounts'
  let upstream=false;const db={request:async path=>path.startsWith('rpc/')?[{verifier:'instagram-unified',business_id:user.businessId,user_id:user.id}]:[]};
  const ig=new Instagram(env,db,async()=>{upstream=true;});await assert.rejects(ig.callback(new URLSearchParams({state:'a'.repeat(43),code:'one-time-code'}),'a'.repeat(43)),{status:403});assert.equal(upstream,false);
 });
+
+import {CredentialVault} from '../lib/credential-vault.mjs';
+function outboundFixture(){
+ const receipts=new Map(),calls=[];
+ const connection={account_id:'17841459500184656',config:{receiving:true,expiresAt:new Date(Date.now()+86400000).toISOString()},encrypted_credentials:new CredentialVault(env.INTEGRATION_ENCRYPTION_KEY).seal({accessToken:'secret-token'},'instagram:'+user.businessId)};
+ const db={request:async(path,opt)=>{
+  if(path.startsWith('vm_instagram_integrations?'))return [connection];
+  if(path==='vm_meta_event_receipts'){
+   if(receipts.has(opt.body.event_key))throw Object.assign(Error('unique'),{status:409});
+   receipts.set(opt.body.event_key,opt.body);return [opt.body];
+  }
+  if(path.startsWith('vm_meta_event_receipts?')){
+   const key=new URLSearchParams(path.split('?')[1]).get('event_key').slice(3);
+   if(opt){Object.assign(receipts.get(key),opt.body);return [];}
+   return receipts.has(key)?[receipts.get(key)]:[];
+  }throw Error(path);
+ }};
+ const fetcher=async(url,opt)=>{calls.push({url,body:JSON.parse(opt.body)});return new Response(JSON.stringify({message_id:'mid.confirmed',id:'17999999999999'}));};
+ const ig=new Instagram(env,db,fetcher);
+ const c={id:'conversation-1',channel:'instagram',instagramSource:{accountId:connection.account_id,recipientId:'123456789',inboundId:'ig:real-message',at:new Date().toISOString()}};
+ return {ig,c,calls,receipts,connection};
+}
+test('manual reply only targets a verified tenant account and existing inbound, never simulations',async()=>{
+ const {ig,c,calls,connection}=outboundFixture();
+ await assert.rejects(ig.sendReply(user,{...c,instagramSource:null},'Hola'),{status:409});
+ await assert.rejects(ig.sendReply({...user,role:'agent'},c,'Hola'),{status:403});
+ await assert.rejects(ig.sendReply(user,c,'x'.repeat(1001)),{status:400});
+ connection.account_id='999999999';await assert.rejects(ig.sendReply(user,c,'Hola'),{status:409});assert.equal(calls.length,0);
+});
+test('DM reply respects 24h, requires a valid inbound timestamp and claims before network',async()=>{
+ const {ig,c,calls}=outboundFixture();
+ for(const at of [null,'invalid',new Date(Date.now()-86400001).toISOString(),new Date(Date.now()+60000).toISOString()])await assert.rejects(ig.sendReply(user,{...c,instagramSource:{...c.instagramSource,at}},'Hola'),{status:409});
+ assert.equal(calls.length,0);
+ const result=await ig.sendReply(user,c,'Hola');assert.equal(result.delivery,'aceptado_por_meta');assert.equal(calls.length,1);
+ assert.deepEqual(calls[0].body,{recipient:{id:c.instagramSource.recipientId},message:{text:'Hola'}});
+ assert.equal((await ig.sendReply(user,c,'Otra respuesta')).externalId,result.externalId);assert.equal(calls.length,1);
+});
+test('concurrent clicks produce exactly one upstream request',async()=>{
+ const {ig,c,calls}=outboundFixture();
+ const result=await Promise.allSettled([ig.sendReply(user,c,'Hola'),ig.sendReply(user,c,'Hola')]);
+ assert.equal(calls.length,1);assert.equal(result.filter(x=>x.status==='fulfilled').length,1);
+});
+test('ambiguous network failures block automatic retries',async()=>{
+ const {ig,c}=outboundFixture();let attempts=0;ig.fetcher=async()=>{attempts++;throw Error('timeout');};
+ await assert.rejects(ig.sendReply(user,c,'Hola'),{status:502});await assert.rejects(ig.sendReply(user,c,'Hola'),{status:409});assert.equal(attempts,1);
+});
+test('comment reply uses only the comment target stored from a signed webhook',async()=>{
+ const {ig,c,calls}=outboundFixture();c.channel='instagram_comentario';c.instagramSource.commentId='179123456789';
+ await ig.sendReply(user,c,'Gracias por consultar');assert.match(calls[0].url,/179123456789\/replies$/);assert.deepEqual(calls[0].body,{message:'Gracias por consultar'});
+});
+
+import {metaEvents} from '../lib/security.mjs';
+test('DM response window is derived from the Meta message timestamp, not receive time',()=>{
+ const at=Date.now()-3600000;
+ const [event]=metaEvents({object:'instagram',entry:[{id:'17841459500184656',messaging:[{sender:{id:'123456789'},timestamp:at,message:{mid:'real-mid',text:'Consulta'}}]}]});
+ assert.equal(event.at,new Date(at).toISOString());
+});
