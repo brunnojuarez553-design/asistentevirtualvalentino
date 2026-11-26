@@ -119,3 +119,16 @@ test('diagnostics mark unavailable comment sample as pending, never a successful
  const result=await ig.diagnose(user);assert.equal(result.checks.at(-1).name,'Comentarios');assert.equal(result.checks.at(-1).status,'pending');
  connection.config.expiresAt='invalid';await assert.rejects(ig.diagnose(user),{status:409});
 });
+
+test('recent sync accepts only verified inbound text addressed to the connected account in the last day',async()=>{
+ const {ig,connection}=outboundFixture();let requests=0;
+ const message=(id,extra={})=>({id,message:'Información',created_time:new Date().toISOString(),from:{id:'123456789'},to:{data:[{id:connection.account_id}]},...extra});
+ ig.fetcher=async(url,opt)=>{requests++;assert.equal(opt.method,'GET');assert.match(url,/\/conversations\?/);return new Response(JSON.stringify({data:[{messages:{data:[message('own',{from:{id:connection.account_id}}),message('wrong-recipient',{to:{data:[{id:'999999999'}]}}),message('old',{created_time:new Date(Date.now()-90000000).toISOString()}),message('valid')]}}]}));};
+ const result=await ig.recentMessages(user);assert.equal(requests,1);assert.equal(result.events.length,1);assert.equal(result.events[0].id,'ig:valid');assert.equal(result.events[0].externalAccountId,connection.account_id);assert.equal(result.events[0].contact,'123456789');
+ await assert.rejects(ig.recentMessages({...user,role:'agent'}),{status:403});
+});
+test('recent sync chooses only the newest valid inbound and bounds imported threads',async()=>{
+ const {ig,connection}=outboundFixture();const m=(id,time)=>({id,message:'Consulta',created_time:new Date(time).toISOString(),from:{id:'123456789'},to:{data:[{id:connection.account_id}]}});
+ ig.fetcher=async()=>new Response(JSON.stringify({data:Array.from({length:5},()=>({messages:{data:[m('older',Date.now()-3600000),m('newer',Date.now()-1000)]}}))}));
+ const result=await ig.recentMessages(user);assert.equal(result.events.length,3);assert.ok(result.events.every(e=>e.id==='ig:newer'));assert.equal(result.scanned,3);
+});
