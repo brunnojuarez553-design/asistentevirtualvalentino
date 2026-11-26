@@ -102,3 +102,20 @@ test('DM response window is derived from the Meta message timestamp, not receive
  const [event]=metaEvents({object:'instagram',entry:[{id:'17841459500184656',messaging:[{sender:{id:'123456789'},timestamp:at,message:{mid:'real-mid',text:'Consulta'}}]}]});
  assert.equal(event.at,new Date(at).toISOString());
 });
+
+test('diagnostics query only the connected tenant assets and never return tokens or private messages',async()=>{
+ const {ig,c,connection}=outboundFixture(),urls=[];
+ ig.fetcher=async(url,opt)=>{urls.push(url);assert.equal(opt.method,'GET');return new Response(JSON.stringify(url.includes('fields=id,username')?{id:connection.account_id,username:'workshop'}:url.includes('/media?')?{data:[{id:'17999999999999'}]}:{data:[{id:'private-id',message:'private-message'}]}));};
+ const result=await ig.diagnose(user);assert.equal(result.checks.length,4);assert.ok(result.checks.every(x=>x.status==='ok'));assert.ok(urls.every(x=>x.startsWith('https://graph.facebook.com/v27.0/')));assert.ok(urls[1].includes(connection.account_id+'/conversations'));
+ assert.ok(!JSON.stringify(result).includes('secret-token'));assert.ok(!JSON.stringify(result).includes('private-message'));assert.ok(!JSON.stringify(result).includes('private-id'));
+ await assert.rejects(ig.diagnose({...user,role:'agent'}),{status:403});
+});
+test('diagnostics expose safe Meta error codes and stop when profile cannot be verified',async()=>{
+ const {ig}=outboundFixture();let requests=0;ig.fetcher=async()=>{requests++;return new Response(JSON.stringify({error:{code:10,error_subcode:123,message:'sensitive upstream detail'}}),{status:403});};
+ const result=await ig.diagnose(user);assert.equal(requests,1);assert.equal(result.checks[0].status,'error');assert.equal(result.checks[0].code,10);assert.ok(!JSON.stringify(result).includes('sensitive upstream detail'));
+});
+test('diagnostics mark unavailable comment sample as pending, never a successful test',async()=>{
+ const {ig,connection}=outboundFixture();ig.fetcher=async url=>new Response(JSON.stringify(url.includes('fields=id,username')?{id:connection.account_id}:{data:[]}));
+ const result=await ig.diagnose(user);assert.equal(result.checks.at(-1).name,'Comentarios');assert.equal(result.checks.at(-1).status,'pending');
+ connection.config.expiresAt='invalid';await assert.rejects(ig.diagnose(user),{status:409});
+});
