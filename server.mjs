@@ -227,15 +227,15 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(action==='connect'){const r=await instagram.start(req.panelUser);res.setHeader('Set-Cookie',r.cookie);return send(200,{url:r.url});}
         if(action==='prepare')return send(200,await instagram.prepare(req.panelUser));
         if(action==='diagnose')return send(200,await instagram.diagnose(req.panelUser));
-        if(action==='sync'){
-          const {events,scanned}=await instagram.recentMessages(req.panelUser);
+        if(action==='sync'||action==='sync-comments'){
+          const {events,scanned,message}=await (action==='sync-comments'?instagram.latestVideoComment(req.panelUser):instagram.recentMessages(req.panelUser));
           const rules=(await instagram.connection(req.panelUser.businessId))?.config?.rules;
           const result=await mutate(async d=>{let imported=0;for(const event of events){
             const c=await incoming(d,{...event,instagramSelection:selectInstagramEvent(event,rules)});
             if(c.duplicate)continue;
-            c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:event.contact,at:event.at};imported++;
+            c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:event.contact,commentId:event.threadKey?.replace(/^ig-comment:/,''),at:event.at};imported++;
           }audit(d,'sincronizacion_instagram');return {imported,scanned};});
-          return send(200,{...result,outbound:false});
+          return send(200,{...result,...(message?{message}:{}),outbound:false});
         }
         if(action==='reply'){
           let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}

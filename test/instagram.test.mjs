@@ -132,3 +132,14 @@ test('recent sync chooses only the newest valid inbound and bounds imported thre
  ig.fetcher=async()=>new Response(JSON.stringify({data:Array.from({length:5},()=>({messages:{data:[m('older',Date.now()-3600000),m('newer',Date.now()-1000)]}}))}));
  const result=await ig.recentMessages(user);assert.equal(result.events.length,3);assert.ok(result.events.every(e=>e.id==='ig:newer'));assert.equal(result.scanned,3);
 });
+
+test('latest video comment recovery selects the newest owned video and a recent matching non-self comment',async()=>{
+ const {ig,connection}=outboundFixture(),urls=[];const now=Date.now();
+ ig.fetcher=async(url,opt)=>{urls.push(url);assert.equal(opt.method,'GET');return new Response(JSON.stringify(url.includes('/media?')?{data:[{id:'11111111',media_type:'VIDEO',timestamp:new Date(now-99999).toISOString()},{id:'22222222',media_type:'VIDEO',timestamp:new Date(now-50000).toISOString()},{id:'33333333',media_type:'IMAGE',timestamp:new Date(now).toISOString()}]}:{data:[{id:'44444444',text:'quiero información del servicio',timestamp:new Date(now-3000).toISOString(),username:'customer'},{id:'55555555',text:'servicio',timestamp:new Date(now-1000).toISOString(),from:{id:connection.account_id}}]}));};
+ const result=await ig.latestVideoComment(user);assert.equal(urls.length,2);assert.match(urls[1],/22222222\/comments/);assert.equal(result.events.length,1);assert.equal(result.events[0].threadKey,'ig-comment:44444444');assert.equal(result.events[0].mediaId,'22222222');assert.equal(result.events[0].channel,'instagram_comentario');
+ await assert.rejects(ig.latestVideoComment({...user,role:'agent'}),{status:403});
+});
+test('video comment recovery reports missing videos and ignores old or irrelevant comments',async()=>{
+ const {ig}=outboundFixture();ig.fetcher=async()=>new Response(JSON.stringify({data:[]}));assert.equal((await ig.latestVideoComment(user)).events.length,0);
+ ig.fetcher=async url=>new Response(JSON.stringify(url.includes('/media?')?{data:[{id:'22222222',media_type:'VIDEO',timestamp:new Date().toISOString()}]}:{data:[{id:'44444444',text:'servicio',timestamp:new Date(Date.now()-90000000).toISOString(),username:'customer'},{id:'55555555',text:'hola',timestamp:new Date().toISOString(),username:'customer'}]}));assert.equal((await ig.latestVideoComment(user)).events.length,0);
+});
