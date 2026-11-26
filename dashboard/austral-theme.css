@@ -140,3 +140,6 @@ footer .footer-brand{margin-left:auto;color:#7d8da4}
 #channels .wa-connect-note{margin:0 -20px;padding:16px 20px;align-items:flex-start}
 }
 @media(max-width:420px){#channels .wa-connect-intro{flex-direction:column}#channels .wa-connect-label{margin-top:2px}}
+
+
+.instagram-connect-card{margin-top:1.5rem}.instagram-connect-card .wa-connect-mark{color:#dba9e9;background:rgba(190,120,205,.09);border-color:rgba(190,120,205,.25)}.instagram-rules{display:grid;gap:1rem;margin:1.5rem 2rem;padding:1.5rem;border:1px solid var(--border,rgba(255,255,255,.1));border-radius:16px}.instagram-rules[hidden]{display:none}.instagram-rules h4{font-size:1.1rem;margin:0}.instagram-rule-channels{display:flex;gap:1rem;flex-wrap:wrap}.instagram-rules label{font-size:.95rem}.instagram-rules .muted{font-size:.9rem;margin:0}.instagram-rules textarea{width:100%;box-sizing:border-box}.instagram-rules button{justify-self:start}@media(max-width:640px){.instagram-rules{margin:1rem;padding:1rem}.instagram-rule-channels{display:grid}}

@@ -1,13 +1,13 @@
 import {mediaPresentation} from './media-presentation.mjs';
 let data,selected=null,token='',catalogServices=[],editingServiceId=null,authMode='token',activeView='overview',onboardingStep=0,aiStatus={enabled:false};
-let activeBusinessId='',businessGeneration=0;
+let activeBusinessId=new URLSearchParams(location.search).get('business')||'',businessGeneration=0;
 const $=s=>document.querySelector(s);
 const labels={ia:'IA',revision:'Revisión',humano:'Humano'};
 const channelLabels={simulador:'Simulador',whatsapp:'WhatsApp',instagram:'Instagram DM',instagram_comentario:'Instagram comentario'};
 async function api(path,body){const generation=businessGeneration;const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(activeBusinessId?{'X-Business-Id':activeBusinessId}:{}),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(generation!==businessGeneration)throw Error('La empresa activa cambió; actualizá la vista.');if(!r.ok)throw Error(d.error);return d;}
 function node(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e;}
 function fail(e){$('#error').textContent=e.message;}
-async function refresh(){try{await refreshBusinesses();const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;if(activeView==='channels'&&token)refreshWhatsAppConnection();catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
+async function refresh(){try{await refreshBusinesses();const [workspace,services,ai]=await Promise.all([api('workspace'),api('services'),api('ai/status')]);data=workspace;if(activeView==='channels'&&token){refreshWhatsAppConnection();refreshInstagramConnection();}catalogServices=services.services;aiStatus={...ai,verified:aiStatus?.verified===true&&aiStatus?.model===ai.model};$('#error').textContent='';render();renderCatalog();}catch(e){if(authMode==='supabase' && /sesión|autorizado|401|expirada/i.test(String(e.message))){token='';showLogin(true);}else fail(e);}}
 function render(){
  const businessName=data.config?.business?.name||'Negocio activo';
  $('#activeBusinessName').textContent=businessName;
@@ -17,7 +17,7 @@ function render(){
  if(!filtered.length)list.append(node('p','Todavía no hay conversaciones en esta vista.','muted'));
  for(const c of filtered){const b=node('button','','item'+(c.id===selected?' selected':''));b.append(node('strong',c.contact),node('span',labels[c.state],'badge '+c.state),node('small',(channelLabels[c.channel]||c.channel)+' · '+(c.messages.at(-1)?.text.slice(0,90)||'')));b.onclick=()=>{selected=c.id;render();};list.append(b);}
  const c=data.conversations.find(c=>c.id===selected);renderAiStatus(!!c);$('#contact').textContent=c?.contact||'Probemos el asistente';$('#channel').textContent=c?(channelLabels[c.channel]||c.channel)+' · Sin envíos externos':'Una consulta simulada, una respuesta segura.';const simChannel=$('#simulationChannel');if(c)simChannel.value=['whatsapp','instagram','instagram_comentario'].includes(c.channel)?c.channel:'whatsapp';simChannel.disabled=!!c;$('#state').value=c?.state||'ia';$('#state').disabled=!c;$('#reply').hidden=!c;$('#reason').textContent=c?.reason||'';
- const messages=$('#messages');messages.replaceChildren();if(!c)messages.append(node('div','Tu bandeja está lista. Escribí una consulta para probar el recorrido.','empty'));for(const m of c?.messages||[]){const el=node('article','','message '+(m.role==='cliente'?'customer':'team'));el.append(node('small',m.role==='cliente'?'CLIENTE':m.delivery==='historial_whatsapp'?'EQUIPO · HISTORIAL DE WHATSAPP':m.delivery==='enviado_desde_whatsapp_business'?'EQUIPO · WHATSAPP BUSINESS':m.delivery==='borrador_no_enviado'?'ASISTENTE · BORRADOR SIN ENVIAR':m.role==='equipo'?'EQUIPO · SIMULADO':'ASISTENTE · SIMULADO'),node('p',m.text));const media=mediaPresentation(m);if(media)el.append(node('small',media.type+' · '+media.status,'muted'));messages.append(el);}messages.scrollTop=messages.scrollHeight;$('#replyText').value=c?.draft||'';
+ const messages=$('#messages');messages.replaceChildren();if(!c)messages.append(node('div','Tu bandeja está lista. Escribí una consulta para probar el recorrido.','empty'));for(const m of c?.messages||[]){const el=node('article','','message '+(m.role==='cliente'?'customer':'team'));el.append(node('small',m.role==='cliente'?'CLIENTE':m.delivery==='historial_whatsapp'?'EQUIPO · HISTORIAL DE WHATSAPP':m.delivery==='enviado_desde_whatsapp_business'?'EQUIPO · WHATSAPP BUSINESS':m.delivery==='enviado_desde_instagram'?'EQUIPO · INSTAGRAM':m.delivery==='borrador_no_enviado'?'ASISTENTE · BORRADOR SIN ENVIAR':m.role==='equipo'?'EQUIPO · SIMULADO':'ASISTENTE · SIMULADO'),node('p',m.text));const media=mediaPresentation(m);if(media)el.append(node('small',media.type+' · '+media.status,'muted'));messages.append(el);}messages.scrollTop=messages.scrollHeight;$('#replyText').value=c?.draft||'';
  const alerts=$('#alerts');alerts.replaceChildren();for(const a of data.alerts.filter(a=>!a.resolved).slice(0,30)){const b=node('button',a.text,'alert');b.onclick=()=>{selected=a.conversationId;render();};alerts.append(b);}if(!alerts.children.length)alerts.append(node('p','Sin alertas pendientes.','muted'));
  const service=$('#service');const prev=service.value;service.replaceChildren(new Option('Elegir servicio aprobado',''));for(const s of data.config.services.filter(s=>s.approved===true))service.add(new Option(s.name,s.id));service.value=prev;
  renderOverview();
@@ -208,7 +208,7 @@ function showView(view){
   if(v==='metaReview')refreshMetaReview();
   if(v==='calendar')refreshCalendar().catch(fail);
   if(v==='team')refreshTeam().catch(fail);
-  if(v==='channels'&&token)refreshWhatsAppConnection();
+  if(v==='channels'&&token){refreshWhatsAppConnection();refreshInstagramConnection();}
   window.scrollTo({top:0,behavior:'instant'});
 }
 function renderOverview(){
@@ -589,3 +589,24 @@ function openWhatsAppSignup(session,generation){
 }
 initPanel();
 
+
+
+// Instagram: autorización oficial por negocio; ningún envío automático.
+let igGeneration=0;
+async function refreshInstagramConnection(){
+ const generation=++igGeneration,business=businessGeneration;
+ const status=$('#igConnectStatus'),button=$('#igConnect'),form=$('#igRulesForm');
+ if(!status)return;
+ button.disabled=true;form.hidden=true;status.textContent='Consultando Instagram…';
+ try{
+  const r=await api('instagram/status');if(generation!==igGeneration||business!==businessGeneration)return;
+  const returned=new URLSearchParams(location.search);
+  status.textContent=(returned.get('instagram')==='error'?'Meta no completó la autorización. Volvé a conectar. ':'')+(r.needsReconnect?'La autorización venció. Renovala para continuar. ':r.connected?'@'+r.username+(r.receiving?' · Recepción habilitada. Respuestas en borrador.':' · Cuenta autorizada; falta habilitar recepción.'):(r.configured?'Listo para autorizar una cuenta profesional.':'Conexión pendiente de configuración por Austral.'));
+  document.querySelectorAll('#channels .channel-card').forEach((card,index)=>{if(index>0)card.querySelector('.channel-state').textContent=r.receiving?'RECEPCIÓN HABILITADA':r.connected?'AUTORIZADA':'SIN CONECTAR';});
+  button.textContent=r.needsReconnect?'Renovar autorización':r.connected?'Habilitar recepción':'Conectar Instagram';button.disabled=!r.configured||!r.canManage||(r.connected&&r.receiving&&!r.needsReconnect);
+  button.onclick=async()=>{button.disabled=true;try{if(r.connected&&!r.needsReconnect){await api('instagram/prepare',{});await refreshInstagramConnection();}else{const result=await api('instagram/connect',{});const url=new URL(result.url);if(url.origin!=='https://www.facebook.com')throw Error('URL de autorización inválida');location.assign(url.href);}}catch(e){status.textContent=e.message;button.disabled=false;}};
+  form.hidden=!r.connected;$('#igMessages').checked=r.rules.messages;$('#igComments').checked=r.rules.comments;$('#igKeywords').value=r.rules.keywords.join(', ');$('#igMediaIds').value=r.rules.mediaIds.join(', ');
+  form.querySelectorAll('input,textarea,button').forEach(el=>el.disabled=!r.canManage);
+ }catch(e){if(generation===igGeneration&&business===businessGeneration)status.textContent=e.message;}
+}
+$('#igRulesForm').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;const split=id=>$('#'+id).value.split(',').map(x=>x.trim()).filter(Boolean);try{await api('instagram/rules',{mode:'drafts',messages:$('#igMessages').checked,comments:$('#igComments').checked,keywords:split('igKeywords'),mediaIds:split('igMediaIds')});$('#igRulesStatus').textContent='Criterios guardados. Las respuestas se preparan para revisión; no se envían.';}catch(error){$('#igRulesStatus').textContent=error.message;}finally{button.disabled=false;}};

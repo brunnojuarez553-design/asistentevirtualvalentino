@@ -1,4 +1,5 @@
 import {MetaChannel} from './lib/meta-channel.mjs';
+import {Instagram,instagramCookie,selectInstagramEvent} from './lib/instagram.mjs';
 import {MetaOnboarding} from './lib/meta-onboarding.mjs';
 import http from 'node:http';
 import {AsyncLocalStorage} from 'node:async_hooks';
@@ -38,6 +39,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const googleCalendar=new GoogleCalendar(env,directory,{fetcher:googleFetcher});
   const metaOnboarding=new MetaOnboarding(env,directory);
   const metaChannel=new MetaChannel(env,directory,metaChannelFetcher);
+  const instagram=new Instagram(env,directory,metaChannelFetcher);
   const requestScope=new AsyncLocalStorage();
   const scope=()=>requestScope.getStore()||{};
   const activeStore=()=>scope().store||store;
@@ -103,19 +105,19 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     audit(d,previous?'servicio_editado':'servicio_creado');
     return {...record,...parsed,id:parsed.code};
   };
-  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId,outboundHuman=false,historical=false,at}) {
+  async function incoming(d,{id=randomUUID(),contact='Cliente de prueba',text,channel='simulador',conversationId,vehicle,serviceId,mediaType,mediaId,outboundHuman=false,historical=false,at,instagramSelection,threadKey}) {
     if(d.events.includes(id))return {duplicate:true};
-    let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.contact===contact && c.channel===channel);
+    let c=conversationId ? d.conversations.find(c=>c.id===conversationId) : d.conversations.find(c=>c.channel===channel&&(threadKey?c.threadKey===threadKey:c.contact===contact));
     if(conversationId&&!c)throw Object.assign(Error('Conversación inexistente'),{status:404});
-    if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString()};d.conversations.unshift(c);}
+    if(!c){c={id:randomUUID(),contact,channel,state:'ia',messages:[],createdAt:new Date().toISOString(),...(threadKey?{threadKey}: {})};d.conversations.unshift(c);}
     if(historical){
       c.messages.push({id,role:outboundHuman?'equipo':'cliente',text,at:at||new Date().toISOString(),delivery:'historial_whatsapp'});
       c.messages.sort((a,b)=>a.at.localeCompare(b.at));c.state='humano';c.draft=null;
       d.events.push(id);return c;
     }
     if(outboundHuman){
-      c.messages.push({id,role:'equipo',text,at:new Date().toISOString(),delivery:'enviado_desde_whatsapp_business'});
-      c.state='humano';c.draft=null;c.reason='El equipo respondió desde WhatsApp Business. IA pausada hasta reactivación manual.';
+      c.messages.push({id,role:'equipo',text,at:new Date().toISOString(),delivery:channel==='instagram'?'enviado_desde_instagram':'enviado_desde_whatsapp_business'});
+      c.state='humano';c.draft=null;c.reason='El equipo respondió desde '+(channel==='instagram'?'Instagram':'WhatsApp Business')+'. IA pausada hasta reactivación manual.';
       if(!d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason,at:new Date().toISOString(),resolved:false});
       d.events.push(id);audit(d,'intervencion_whatsapp_business',c.id);return c;
     }
@@ -127,7 +129,10 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       catch(error){console.error('Media review fallback:',error.code||'processing_error');}
     }
     c.messages.push({id,role:'cliente',text:mediaAnalysis?.text||text,at:new Date().toISOString(),...(mediaType?{mediaType}: {}),...(mediaAnalysis?{mediaAnalysisKind:mediaAnalysis.kind}: {})});
-    const result=c.state==='humano' ? {state:'humano',reply:null,reason:'Atención pausada para intervención del equipo.'} : mediaType
+    if(c.instagramPolicySkipped&&instagramSelection?.selected&&c.state==='revision')c.state='ia';
+    c.instagramPolicySkipped=instagramSelection?.selected===false&&!instagramSelection.handoff;
+    const result=c.state==='humano' ? {state:'humano',reply:null,reason:'Atención pausada para intervención del equipo.'} : instagramSelection?.selected===false
+      ?{state:instagramSelection.handoff?'humano':'revision',reply:null,reason:instagramSelection.reason} : mediaType
       ?{state:'revision',reply:null,reason:mediaAnalysis?'Archivo ('+mediaType+') interpretado automáticamente; revisión humana obligatoria.':'El cliente envió un archivo ('+mediaType+'). Revisión humana requerida; no se interpretó el contenido.'}
       :await respond({text,conversation:c,config:await engineConfig(d),vehicle:c.vehicle,serviceId,provider});
     c.state=result.state;c.draft=result.draft??null;c.reason=c.reason && result.reason==='Atención pausada para intervención del equipo.' ? c.reason : (result.reason||c.reason||null);
@@ -172,6 +177,13 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(url.searchParams.get('hub.mode')!=='subscribe'||!same(url.searchParams.get('hub.verify_token'),env.META_VERIFY_TOKEN))return send(403,{error:'Verificación inválida'});
         const challenge=url.searchParams.get('hub.challenge');if(!challenge||challenge.length>200)return send(400,{error:'Challenge inválido'});res.writeHead(200,{'Content-Type':'text/plain'});return res.end(challenge);
       }
+      if(url.pathname==='/integrations/instagram/callback'&&req.method==='GET'){
+        const cookie=String(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(instagramCookie+'='))?.slice(instagramCookie.length+1);
+        res.setHeader('Set-Cookie',instagramCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
+        try{const businessId=await instagram.callback(url.searchParams,cookie);res.writeHead(302,{Location:'/dashboard?instagram=connected&business='+encodeURIComponent(businessId)+'#channels'});}
+        catch{res.writeHead(302,{Location:'/dashboard?instagram=error#channels'});}
+        return res.end();
+      }
       if(url.pathname==='/integrations/google/callback'&&req.method==='GET'){
         const cookie=String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(googleCookie+'='))?.slice(googleCookie.length+1);
         res.setHeader('Set-Cookie',googleCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
@@ -205,6 +217,17 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}` &&
            req.headers.origin!==`https://${req.headers.host}`)
           return send(403,{error:'Origen inválido'});
+      }
+      if(url.pathname.startsWith('/api/instagram/')){
+        if(!directory||!req.panelUser)return send(403,{error:'Seleccioná una empresa autorizada'});
+        const action=url.pathname.split('/').at(-1);
+        if(action==='status'&&req.method==='GET')return send(200,await instagram.status(req.panelUser));
+        if(req.method!=='POST')return send(405,{error:'Método no permitido'});
+        if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Instagram requiere propietario o administrador'});
+        if(action==='connect'){const r=await instagram.start(req.panelUser);res.setHeader('Set-Cookie',r.cookie);return send(200,{url:r.url});}
+        if(action==='prepare')return send(200,await instagram.prepare(req.panelUser));
+        if(action==='rules'){let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}return send(200,await instagram.saveRules(req.panelUser,body));}
+        return send(404,{error:'Acción desconocida'});
       }
       if(url.pathname.startsWith('/api/whatsapp-connect/')){
         if(!directory||!req.panelUser)return send(403,{error:'Seleccioná una empresa autorizada'});
@@ -376,7 +399,8 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
             catch(error){if(error.status===409)continue;throw error;}
             selectBusiness(business);
           }
-          await mutate(async d=>{for(const event of batch)await incoming(d,event);});
+          const igRules=directory&&e.channel!=='whatsapp'?(await instagram.connection(scope().business.id))?.config?.rules:null;
+          await mutate(async d=>{for(const event of batch)await incoming(d,{...event,...(igRules?{instagramSelection:selectInstagramEvent(event,igRules)}:{})});});
         }
         return send(200,{received:true,outbound:false});
       }
@@ -456,4 +480,5 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   return env.SERVERLESS==='true'?scopedHandler:http.createServer(scopedHandler);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){const app=await createApp();app.listen(Number(process.env.PORT||3000),'127.0.0.1',()=>console.log(`Valentino: http://127.0.0.1:${process.env.PORT||3000} · simulación, sin envíos reales`));}
+
 
