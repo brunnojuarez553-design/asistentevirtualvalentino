@@ -226,6 +226,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Instagram requiere propietario o administrador'});
         if(action==='connect'){const r=await instagram.start(req.panelUser);res.setHeader('Set-Cookie',r.cookie);return send(200,{url:r.url});}
         if(action==='prepare')return send(200,await instagram.prepare(req.panelUser));
+        if(action==='diagnose')return send(200,await instagram.diagnose(req.panelUser));
         if(action==='reply'){
           let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
           const snapshot=await activeStore().load(),conversation=snapshot.conversations.find(c=>c.id===body.id);
