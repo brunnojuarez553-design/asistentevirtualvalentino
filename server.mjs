@@ -282,14 +282,27 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
         if(action==='prepare')return send(200,await instagram.prepare(req.panelUser));
         if(action==='diagnose')return send(200,await instagram.diagnose(req.panelUser));
         if(action==='sync'||action==='sync-comments'){
-          const {events,scanned,message}=await (action==='sync-comments'?instagram.latestVideoComment(req.panelUser):instagram.recentMessages(req.panelUser));
+          let input={};if(action==='sync-comments'){try{input=JSON.parse((await readBody(req,4096)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}}
+          const {events,scanned,message}=await (action==='sync-comments'?instagram.latestVideoComment(req.panelUser,input.postUrl):instagram.recentMessages(req.panelUser));
           const rules=(await instagram.connection(req.panelUser.businessId))?.config?.rules;
           const result=await mutate(async d=>{let imported=0;for(const event of events){
             const c=await incoming(d,{...event,instagramSelection:selectInstagramEvent(event,rules)});
             if(c.duplicate)continue;
-            c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:event.contact,commentId:event.threadKey?.replace(/^ig-comment:/,''),at:event.at};imported++;
+            c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:event.contact,commentId:event.threadKey?.replace(/^ig-comment:/,''),mediaId:event.mediaId||null,at:event.at};imported++;
           }audit(d,'sincronizacion_instagram');return {imported,scanned};});
           return send(200,{...result,...(message?{message}:{}),outbound:false});
+        }
+        if(action==='comment-test'){
+          let input;try{input=JSON.parse((await readBody(req,4096)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
+          const snapshot=await activeStore().load(),conversation=snapshot.conversations.find(c=>c.id===input.id);
+          if(!conversation)return send(404,{error:'Conversación inexistente'});
+          const outcome=await instagramComments.sendTestPair(req.panelUser,conversation,input.serviceCode,await serviceRows(snapshot),input.confirm);
+          await mutate(d=>{const c=d.conversations.find(x=>x.id===conversation.id);if(!c)return;
+            for(const message of outcome.messages||[])if(!c.messages.some(m=>m.id===message.id))c.messages.push({...message,role:'equipo'});
+            c.commentAutomation={status:outcome.status,source:'manual_api_test'};c.state='revision';c.draft=null;c.reason=outcome.status==='accepted'?'Prueba manual: privado y comentario aceptados por Meta. Esto no valida la recepción por webhook.':outcome.reason||'Prueba pendiente de revisión.';
+            audit(d,'prueba_comentario_instagram_'+outcome.status,c.id);
+          });
+          return send(200,{...outcome,webhookValidated:false});
         }
         if(action==='reply'){
           let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}

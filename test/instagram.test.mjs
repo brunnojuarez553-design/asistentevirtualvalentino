@@ -143,3 +143,24 @@ test('video comment recovery reports missing videos and ignores old or irrelevan
  const {ig}=outboundFixture();ig.fetcher=async()=>new Response(JSON.stringify({data:[]}));assert.equal((await ig.latestVideoComment(user)).events.length,0);
  ig.fetcher=async url=>new Response(JSON.stringify(url.includes('/media?')?{data:[{id:'22222222',media_type:'VIDEO',timestamp:new Date().toISOString()}]}:{data:[{id:'44444444',text:'servicio',timestamp:new Date(Date.now()-90000000).toISOString(),username:'customer'},{id:'55555555',text:'hola',timestamp:new Date().toISOString(),username:'customer'}]}));assert.equal((await ig.latestVideoComment(user)).events.length,0);
 });
+
+test('explicit post recovery resolves the shortcode only within connected account media',async()=>{
+ const {ig}=outboundFixture(),urls=[];
+ ig.fetcher=async(url)=>{urls.push(url);return new Response(JSON.stringify(url.includes('/media?')?{data:[{id:'11111111',media_type:'VIDEO',timestamp:new Date().toISOString(),permalink:'https://www.instagram.com/reel/NEWEST123/'},{id:'22222222',media_type:'VIDEO',timestamp:'2026-10-31T11:57:23Z',permalink:'https://www.instagram.com/reel/DfKEXABOH_6/'}]}:{data:[{id:'33333333',username:'customer',text:'Información del servicio',timestamp:new Date().toISOString()}]}));};
+ const r=await ig.latestVideoComment(user,'https://www.instagram.com/reel/DfKEXABOH_6/');assert.equal(r.events.length,1);assert.equal(r.events[0].mediaId,'22222222');assert.match(urls.at(-1),/22222222\/comments/);
+ await assert.rejects(ig.latestVideoComment(user,'https://www.instagram.com/reel/FOREIGN123/'),{status:403});
+ const count=urls.length;await assert.rejects(ig.latestVideoComment(user,'https://evil.example/reel/DfKEXABOH_6/'),{status:400});assert.equal(urls.length,count);
+});
+
+import {InstagramComments} from '../lib/instagram-comments.mjs';
+test('one-off comment pair verifies media ownership and uses only a tenant-approved service',async()=>{
+ const {ig,c,connection}=outboundFixture(),calls=[];c.channel='instagram_comentario';Object.assign(c.instagramSource,{commentId:'17957774265038898',mediaId:'18110708183141246',inboundId:'ig-comment:17957774265038898'});
+ const services=[{code:'web',name:'Web',active:true,approved:true,public_copy:'Creamos sitios web para negocios.'}];let owner=connection.account_id;
+ ig.fetcher=async(url,opt)=>{calls.push({url,method:opt.method,body:opt.body?JSON.parse(opt.body):null});return new Response(JSON.stringify(opt.method==='POST'?(url.endsWith('/replies')?{id:'17999999999999'}:{message_id:'mid.pair'}):url.includes('fields=id,owner')?{id:c.instagramSource.mediaId,owner:{id:owner}}:url.includes('fields=id,media')?{id:c.instagramSource.commentId,media:{id:c.instagramSource.mediaId}}:{id:c.instagramSource.commentId,timestamp:new Date().toISOString()}));};
+ const service=new InstagramComments(ig);
+ await assert.rejects(service.sendTestPair(user,c,'foreign',services,true),{status:400});
+ await assert.rejects(service.sendTestPair(user,c,'web',services,false),{status:400});
+ owner='999999999';await assert.rejects(service.sendTestPair(user,c,'web',services,true),{status:403});assert.equal(calls.filter(c=>c.method==='POST').length,0);
+ owner=connection.account_id;const result=await service.sendTestPair(user,c,'web',services,true);assert.equal(result.status,'accepted');assert.equal(calls.filter(c=>c.method==='POST').length,2);
+ await service.sendTestPair(user,c,'web',services,true);assert.equal(calls.filter(c=>c.method==='POST').length,2);
+});
