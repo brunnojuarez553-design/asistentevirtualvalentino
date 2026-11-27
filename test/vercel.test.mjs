@@ -105,3 +105,12 @@ test('el simulador conserva vehículo estructurado sin heredar datos de otro mod
  assert.equal(c.vehicle.year,'');
  assert.equal(c.vehicle.engine,'');
 });
+
+test('raw webhook stream preserves whitespace and Unicode for Meta HMAC validation',async()=>{
+ const {Readable}=await import('node:stream');const {createHmac}=await import('node:crypto');const {signature}=await import('../lib/security.mjs');
+ const original='{ "entry": [], "text": "Información á", "object": "instagram" }\n';
+ const req=Readable.from([Buffer.from(original)]);requireRawWebhook(req);
+ const raw=await readBody(req,1024),signed='sha256='+createHmac('sha256','test-secret').update(original).digest('hex');
+ assert.equal(raw.toString('utf8'),original);assert.equal(signature(raw,signed,'test-secret'),true);
+ assert.equal(signature(JSON.stringify(JSON.parse(original)),signed,'test-secret'),false);
+});

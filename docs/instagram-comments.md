@@ -20,6 +20,12 @@ El procesamiento recupera hasta 10 eventos recibidos pendientes por ejecución. 
 
 La activación registra una fecha: los comentarios recibidos antes de ella no generan envíos retroactivos. Las respuestas privadas recibidas conservan su flujo de revisión manual. La continuación de la conversación requiere que el destinatario responda.
 
+## Configuración del runtime
+
+En este proyecto Vercel debe tener `NODEJS_HELPERS=0` en producción y preview. Los helpers nativos convierten `req.body` a objeto y el receptor lo rechaza: reconstruir JSON no conserva necesariamente los bytes firmados por Meta. El servidor ya lee streams y procesa por su cuenta los cuerpos de las APIs normales. Después de cambiar esta variable, redesplegar y comprobar que una firma inválida obtiene 403, no 400 por cuerpo procesado. No desactivar HMAC para resolver un error de parsing.
+
+Referencia: https://vercel.com/docs/functions/runtimes/node-js/advanced-node-configuration
+
 ## Dependencias de Meta
 
 Para Unified Login: aplicación publicada, cuenta profesional pública conectada, suscripciones `comments` y `messages`, token de integración vigente y permisos `instagram_basic`, `instagram_manage_comments`, `instagram_manage_messages`. El acceso avanzado de Instagram requiere su propia revisión; la aprobación de WhatsApp no lo sustituye.
