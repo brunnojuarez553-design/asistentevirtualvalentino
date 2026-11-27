@@ -5,7 +5,7 @@
   "functions": {
     "api/index.mjs": {
       "includeFiles": "{config/default.json,dashboard/**,index.html}",
-      "maxDuration": 30,
+      "maxDuration": 300,
       "regions": [
         "iad1"
       ]

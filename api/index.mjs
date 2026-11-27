@@ -1,3 +1,4 @@
+import {waitUntil} from '@vercel/functions';
 import {createApp} from '../server.mjs';
 
 // Vercel compila código sin comprobar las credenciales de runtime.
@@ -9,7 +10,7 @@ let initializationError=false;
 if(missing.length===0){
   try{
     handler=await createApp({...process.env,NODE_ENV:'production',
-      AUTH_MODE:'supabase',STORAGE:'supabase',SERVERLESS:'true'});
+      AUTH_MODE:'supabase',STORAGE:'supabase',SERVERLESS:'true'},undefined,{backgroundTask:waitUntil});
   }catch{
     initializationError=true;
   }

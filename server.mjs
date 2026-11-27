@@ -1,3 +1,4 @@
+import {InstagramComments,commentAutomation,commentPlan,defaultCommentAutomation} from './lib/instagram-comments.mjs';
 import {MetaChannel} from './lib/meta-channel.mjs';
 import {Instagram,instagramCookie,selectInstagramEvent} from './lib/instagram.mjs';
 import {MetaOnboarding} from './lib/meta-onboarding.mjs';
@@ -22,7 +23,7 @@ import {PanelAuth} from './lib/panel-auth.mjs';
 import {readBody,requireRawWebhook} from './lib/http-body.mjs';
 import {MetaReview} from './lib/meta-review.mjs';
 
-export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher,tenantDirectory,storeFactory,googleFetcher,metaChannelFetcher}={}) {
+export async function createApp(env=process.env, store=new Store(env.STORAGE==='supabase'?{url:env.SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY}:{}),{metaReviewFetcher,tenantDirectory,storeFactory,googleFetcher,metaChannelFetcher,backgroundTask}={}) {
   if(env.STORAGE==='supabase' && (!env.SUPABASE_URL?.startsWith('https://')||!env.SUPABASE_SERVICE_ROLE_KEY))throw Error('Supabase configuration missing');
   const authMode=env.AUTH_MODE || (env.NODE_ENV==='production'?'supabase':'token');
   if(env.NODE_ENV==='production' && (authMode!=='supabase'||env.STORAGE!=='supabase'))throw Error('Production requires Supabase Auth and Supabase storage');
@@ -40,6 +41,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
   const metaOnboarding=new MetaOnboarding(env,directory);
   const metaChannel=new MetaChannel(env,directory,metaChannelFetcher);
   const instagram=new Instagram(env,directory,metaChannelFetcher);
+  const instagramComments=new InstagramComments(instagram);
   const requestScope=new AsyncLocalStorage();
   const scope=()=>requestScope.getStore()||{};
   const activeStore=()=>scope().store||store;
@@ -140,6 +142,36 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
     if(c.state!=='ia' && !d.alerts.some(a=>a.conversationId===c.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:c.id,text:c.reason||'Nueva consulta pendiente',at:new Date().toISOString(),resolved:false});
     d.events.push(id);audit(d,'mensaje_recibido',c.id);return c;
   }
+  const processInstagramComments=async(businessId,commentEvents)=>{
+    const result=await mutate(async d=>{
+            const services=await serviceRows(d);
+            const automation=d.config.instagramCommentAutomation||defaultCommentAutomation();
+            for(const event of commentEvents){
+              const plan=event.channel==='instagram_comentario'?commentPlan(event,automation,services):null;
+              const selection=plan?.matched?{selected:false,reason:'Consulta asociada a '+plan.serviceName+'.'}:{selected:false,reason:'Comentario recibido; sin regla automática coincidente.'};
+              const c=await incoming(d,{...event,...(selection?{instagramSelection:selection}:{})});
+              if(!c.duplicate&&['instagram','instagram_comentario'].includes(event.channel)&&!event.outboundHuman){
+                c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:String(event.contact),commentId:event.threadKey?.replace(/^ig-comment:/,''),mediaId:event.mediaId||null,at:event.at||null};
+                if(plan?.matched&&c.state!=='humano')c.draft=plan.privateText;
+              }
+            }
+            return {automation,services};
+          });
+          // External sends MUST stay outside mutate: CAS retries may execute the callback again.
+          for(const event of commentEvents){
+            const snapshot=await activeStore().load(),c=snapshot.conversations.find(c=>c.threadKey===event.threadKey&&c.channel===event.channel);
+            const currentAutomation=snapshot.config?.instagramCommentAutomation||defaultCommentAutomation();
+            const outcome=await instagramComments.run(businessId,event,currentAutomation,await serviceRows(snapshot),{human:!c||c.state==='humano'});
+            await mutate(d=>{const conversation=d.conversations.find(x=>x.id===c?.id);if(!conversation)return;
+              conversation.commentAutomation={status:outcome.status,serviceCode:outcome.serviceCode||null,metaCode:outcome.metaCode||null};
+              for(const message of outcome.messages||[])if(!conversation.messages.some(m=>m.id===message.id))conversation.messages.push({...message,role:'asistente'});
+              if(outcome.status==='accepted'){conversation.draft=null;conversation.state='revision';conversation.reason='Privado y aviso público aceptados por Meta. La continuación requiere respuesta del cliente.';}
+              if(outcome.status==='review'){conversation.state='revision';conversation.reason=outcome.reason;if(!d.alerts.some(a=>a.conversationId===conversation.id&&!a.resolved))d.alerts.unshift({id:randomUUID(),conversationId:conversation.id,text:outcome.reason,at:new Date().toISOString(),resolved:false});}
+              audit(d,'comentario_instagram_'+outcome.status,conversation.id);
+            });
+            await instagramComments.finish(businessId,event,outcome);
+          }
+  };
   const handler=async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
@@ -221,9 +253,31 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       if(url.pathname.startsWith('/api/instagram/')){
         if(!directory||!req.panelUser)return send(403,{error:'Seleccioná una empresa autorizada'});
         const action=url.pathname.split('/').at(-1);
-        if(action==='status'&&req.method==='GET')return send(200,await instagram.status(req.panelUser));
+        if(action==='status'&&req.method==='GET'){const snapshot=await activeStore().load();return send(200,{...await instagram.status(req.panelUser),commentAutomation:snapshot.config?.instagramCommentAutomation||defaultCommentAutomation(),webhooks:await instagramComments.status(req.panelUser.businessId)});}
         if(req.method!=='POST')return send(405,{error:'Método no permitido'});
         if(!['owner','admin'].includes(req.panelUser.role))return send(403,{error:'Instagram requiere propietario o administrador'});
+        if(action==='process-comments'){
+          const pending=await instagramComments.pending(req.panelUser.businessId);
+          await processInstagramComments(req.panelUser.businessId,pending);
+          return send(200,{processed:pending.length});
+        }
+        if(action==='comment-automation'){
+          let input;try{input=JSON.parse((await readBody(req,65536)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
+          const snapshot=await activeStore().load(),services=await serviceRows(snapshot);
+          const config=commentAutomation(input,services);
+          const previous=snapshot.config?.instagramCommentAutomation;
+          config.enabledSince=config.enabled?(previous?.enabled&&previous.enabledSince?previous.enabledSince:new Date().toISOString()):null;
+          if(config.enabled){const row=await instagram.connection(req.panelUser.businessId);if(!row?.config?.receiving||!Number.isFinite(Date.parse(row.config.expiresAt))||Date.parse(row.config.expiresAt)<=Date.now())return send(409,{error:'Primero conectá Instagram y habilitá la recepción.'});}
+          await mutate(d=>{d.config.instagramCommentAutomation=config;audit(d,config.enabled?'automatizacion_comentarios_activada':'automatizacion_comentarios_guardada');});
+          return send(200,{commentAutomation:config,outbound:config.enabled});
+        }
+        if(action==='comment-preview'){
+          let input;try{input=JSON.parse((await readBody(req,65536)).toString('utf8'));}catch{return send(400,{error:'Datos inválidos'});}
+          const snapshot=await activeStore().load(),services=await serviceRows(snapshot);
+          const config=commentAutomation(input.config,services);
+          if(typeof input.text!=='string'||input.text.length>4000)return send(400,{error:'Escribí un comentario de hasta 4000 caracteres.'});
+          return send(200,{...commentPlan({channel:'instagram_comentario',text:input.text,mediaId:String(input.mediaId||'')},config,services),outbound:false});
+        }
         if(action==='connect'){const r=await instagram.start(req.panelUser);res.setHeader('Set-Cookie',r.cookie);return send(200,{url:r.url});}
         if(action==='prepare')return send(200,await instagram.prepare(req.panelUser));
         if(action==='diagnose')return send(200,await instagram.diagnose(req.panelUser));
@@ -404,7 +458,7 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
       let body;try{body=JSON.parse(raw);}catch{return send(400,{error:'JSON inválido'});}
       if(url.pathname==='/webhooks/meta') {
         if(!Array.isArray(body.entry))return send(400,{error:'Evento inválido'});
-        if(directory)await metaChannel.receive(body);
+        if(directory&&body.object!=='instagram')await metaChannel.receive(body);
         const events=metaEvents(body);
         const grouped=new Map();
         for(const e of events){
@@ -421,13 +475,27 @@ export async function createApp(env=process.env, store=new Store(env.STORAGE==='
             catch(error){if(error.status===409)continue;throw error;}
             selectBusiness(business);
           }
-          const igRules=directory&&e.channel!=='whatsapp'?(await instagram.connection(scope().business.id))?.config?.rules:null;
+          const businessId=scope().business?.id;
+          const igRules=directory&&e.channel!=='whatsapp'?(await instagram.connection(businessId))?.config?.rules:null;
+          // Commit all signed comment events durably before any generation or network send.
+          const commentEvents=[];
+          if(directory)for(const event of batch.filter(x=>x.channel==='instagram_comentario')){
+            const receipt=await instagramComments.capture(businessId,{...event,receivedAt:new Date().toISOString()});
+            if(receipt.state!=='processed')commentEvents.push(event);
+          }
+          if(directory&&e.channel==='instagram_comentario'){
+            const context={...scope()};
+            const work=requestScope.run(context,async()=>{
+              const pending=await instagramComments.pending(businessId);
+              await processInstagramComments(businessId,pending);
+            });
+            if(backgroundTask)backgroundTask(work.catch(()=>console.error('Instagram comment processing pending; retained for recovery.')));
+            else await work;
+            continue;
+          }
           await mutate(async d=>{for(const event of batch){
             const c=await incoming(d,{...event,...(igRules?{instagramSelection:selectInstagramEvent(event,igRules)}:{})});
-            if(!c.duplicate&&['instagram','instagram_comentario'].includes(event.channel)&&!event.outboundHuman){
-              // Only the signed webhook path can establish an outbound target.
-              c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:String(event.contact),commentId:event.threadKey?.replace(/^ig-comment:/,''),at:event.at||null};
-            }
+            if(!c.duplicate&&event.channel==='instagram'&&!event.outboundHuman)c.instagramSource={accountId:event.externalAccountId,inboundId:event.id,recipientId:String(event.contact),at:event.at||null};
           }});
         }
         return send(200,{received:true,outbound:false});
